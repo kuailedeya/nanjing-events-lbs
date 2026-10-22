@@ -307,9 +307,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_header("Access-Control-Max-Age", "86400")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -393,14 +404,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
-        if parsed.path in ("/api/events/status", "/api/status"):
+        if parsed.path in ("/api/events/status", "/api/status") or (parsed.path.startswith("/api/events/") and parsed.path.endswith("/status")):
             post_id = payload.get("id") or payload.get("post_id") or ""
+            if not post_id and parsed.path.startswith("/api/events/"):
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 3:
+                    post_id = parts[2]
             status = payload.get("status", "待去/待薅")
             ok = update_item_status(post_id, status)
             self._send_json({"ok": ok, "id": post_id, "post_id": post_id, "status": status})
             return
 
-        if parsed.path == "/api/scrape":
+        if parsed.path in ("/api/scrape", "/api/sync"):
             keyword = payload.get("keyword", "").strip()
             limit = int(payload.get("limit", 2))
             cmd = [sys.executable, str(SYNC_SCRIPT), "--limit", str(limit)]
