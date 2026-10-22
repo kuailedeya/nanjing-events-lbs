@@ -1,0 +1,259 @@
+# AI 羊毛采集源
+# 每日任务会读取本文件。失败的源会跳过，不会中断整个任务。
+
+github:
+  - {name: "free-for-dev", repo: "ripienaar/free-for-dev", path: "README.md"}
+  - {name: "public-apis", repo: "public-apis/public-apis", path: "README.md"}
+  - {name: "free-programming-books-langs", repo: "EbookFoundation/free-programming-books", path: "books/free-programming-books-langs.md"}
+  - {name: "free-programming-books-subjects", repo: "EbookFoundation/free-programming-books", path: "books/free-programming-books-subjects.md"}
+  - {name: "free-courses-en", repo: "EbookFoundation/free-programming-books", path: "courses/free-courses-en.md"}
+  - {name: "free-courses-zh", repo: "EbookFoundation/free-programming-books", path: "courses/free-courses-zh.md"}
+  - {name: "awesome-selfhosted", repo: "awesome-selfhosted/awesome-selfhosted", path: "README.md"}
+  - {name: "awesome-courses", repo: "prakhar1989/awesome-courses", path: "README.md"}
+  - {name: "computer-science", repo: "ossu/computer-science", path: "README.md"}
+  - {name: "awesome", repo: "sindresorhus/awesome", path: "readme.md"}
+  - {name: "awesome-python", repo: "vinta/awesome-python", path: "README.md"}
+  - {name: "awesome-go", repo: "avelino/awesome-go", path: "README.md"}
+  - {name: "awesome-rust", repo: "rust-unofficial/awesome-rust", path: "README.md"}
+  - {name: "awesome-java", repo: "akullpp/awesome-java", path: "README.md"}
+  - {name: "awesome-cpp", repo: "fffaraz/awesome-cpp", path: "README.md"}
+  - {name: "awesome-php", repo: "ziadoz/awesome-php", path: "README.md"}
+  - {name: "awesome-ruby", repo: "markets/awesome-ruby", path: "README.md"}
+  - {name: "awesome-ios", repo: "vsouza/awesome-ios", path: "README.md"}
+  - {name: "awesome-android", repo: "JStumpp/awesome-android", path: "README.md"}
+  - {name: "awesome-flutter", repo: "Solido/awesome-flutter", path: "README.md"}
+  - {name: "awesome-react", repo: "enaqx/awesome-react", path: "README.md"}
+  - {name: "awesome-vue", repo: "vuejs/awesome-vue", path: "README.md"}
+  - {name: "awesome-nextjs", repo: "unicodeveloper/awesome-nextjs", path: "README.md"}
+  - {name: "awesome-nodejs", repo: "sindresorhus/awesome-nodejs", path: "readme.md"}
+  - {name: "awesome-deno", repo: "denolib/awesome-deno", path: "README.md"}
+  - {name: "awesome-bun", repo: "oven-sh/awesome-bun", path: "README.md"}
+  - {name: "awesome-javascript", repo: "sorrycc/awesome-javascript", path: "README.md"}
+  - {name: "awesome-deep-learning", repo: "ChristosChristofidis/awesome-deep-learning", path: "README.md"}
+  - {name: "awesome-machine-learning", repo: "josephmisiti/awesome-machine-learning", path: "README.md"}
+  - {name: "awesome-datascience", repo: "academic/awesome-datascience", path: "README.md"}
+  - {name: "awesome-ai-agents", repo: "e2b-dev/awesome-ai-agents", path: "README.md"}
+  - {name: "awesome-generative-ai", repo: "steven2358/awesome-generative-ai", path: "README.md"}
+  - {name: "awesome-llm", repo: "Hannibal046/Awesome-LLM", path: "README.md"}
+  - {name: "awesome-mcp-servers", repo: "punkpeye/awesome-mcp-servers", path: "README.md"}
+  - {name: "awesome-claude-code", repo: "hesreallyhim/awesome-claude-code", path: "README.md"}
+  - {name: "awesome-cursorrules", repo: "PatrickJS/awesome-cursorrules", path: "README.md"}
+  - {name: "awesome-chatgpt-prompts", repo: "f/awesome-chatgpt-prompts", path: "README.md"}
+  - {name: "awesome-docker", repo: "veggiemonk/awesome-docker", path: "README.md"}
+  - {name: "awesome-compose", repo: "docker/awesome-compose", path: "README.md"}
+  - {name: "awesome-sysadmin", repo: "awesome-foss/awesome-sysadmin", path: "README.md"}
+  - {name: "devops-exercises", repo: "bregman-arie/devops-exercises", path: "README.md"}
+  - {name: "awesome-postgres", repo: "dhamaniasad/awesome-postgres", path: "README.md"}
+  - {name: "awesome-graphql", repo: "chentsulin/awesome-graphql", path: "README.md"}
+  - {name: "awesome-testing", repo: "TheJambo/awesome-testing", path: "README.md"}
+  - {name: "awesome-security", repo: "sbilly/awesome-security", path: "README.md"}
+  - {name: "awesome-ctf", repo: "apsdehal/awesome-ctf", path: "README.md"}
+  - {name: "awesome-bugbounty-tools", repo: "vavkamil/awesome-bugbounty-tools", path: "README.md"}
+  - {name: "awesome-design-tools", repo: "goabstract/Awesome-Design-Tools", path: "README.md"}
+  - {name: "awesome-api", repo: "Kikobeats/awesome-api", path: "README.md"}
+  - {name: "awesome-microservices", repo: "mfornos/awesome-microservices", path: "README.md"}
+  - {name: "awesome-actions", repo: "sdras/awesome-actions", path: "README.md"}
+  - {name: "awesome-copilot", repo: "github/awesome-copilot", path: "README.md"}
+
+hn_queries:
+  - free
+  - free tier
+  - free credits
+  - free trial
+  - giveaway
+  - student discount
+  - student free
+  - coupon
+  - promo code
+  - open source
+  - self-hosted
+  - free api
+  - free gpu
+  - free hosting
+  - free database
+  - free monitoring
+  - free course
+  - free ebook
+  - hackathon
+  - startup credits
+  - cloud credits
+  - api credits
+  - free ai
+  - free llm
+  - free tokens
+  - free inference
+  - free vector database
+  - free auth
+  - free email
+  - free ci
+  - free storage
+  - free domain
+  - free ssl
+  - lifetime deal
+  - beta invite
+  - waitlist
+  - no cost
+  - free plan
+  - free usage
+  - free quota
+  - free compute
+  - free server
+  - free analytics
+  - free logging
+  - free search
+  - free scraping
+  - free ocr
+  - free speech
+  - free tts
+  - free stt
+  - free image generation
+  - free video generation
+  - free coding
+  - free copilot
+  - free agent
+  - free workflow
+  - free automation
+  - free n8n
+  - free dify
+  - free ollama
+  - free openrouter
+  - free huggingface
+  - free kaggle
+  - free colab
+  - free notion
+  - free figma
+  - free jetbrains
+  - free github
+  - free copilot student
+  - free azure
+  - free aws
+  - free gcp
+  - free oracle
+  - free cloudflare
+  - free vercel
+  - free netlify
+  - free render
+  - free railway
+  - free supabase
+  - free neon
+  - free turso
+  - free upstash
+  - free mongodb
+  - free redis
+  - free sentry
+  - free grafana
+  - free clerk
+  - free resend
+  - free deepgram
+  - free elevenlabs
+  - free modal
+  - free baseten
+  - free groq
+  - free cerebras
+  - free together
+  - free fireworks
+  - free replicate
+  - free cohere
+  - free mistral
+  - free nvidia
+
+devto_tags:
+  - free
+  - opensource
+  - ai
+  - webdev
+  - productivity
+  - student
+  - career
+  - cloud
+  - database
+  - devops
+  - security
+  - api
+  - tutorial
+  - tools
+  - github
+  - programming
+  - javascript
+  - python
+  - rust
+  - go
+  - machinelearning
+  - llm
+  - chatgpt
+  - copilot
+  - cursor
+
+rss:
+  - {name: "Hacker News Frontpage", url: "https://hnrss.org/frontpage"}
+  - {name: "Hacker News Show HN", url: "https://hnrss.org/show"}
+  - {name: "Hacker News Free", url: "https://hnrss.org/newest?q=free"}
+  - {name: "Product Hunt", url: "https://www.producthunt.com/feed"}
+  - {name: "Dev.to", url: "https://dev.to/feed"}
+  - {name: "GitHub Blog", url: "https://github.blog/feed/"}
+  - {name: "Cloudflare Blog", url: "https://blog.cloudflare.com/rss/"}
+  - {name: "Vercel", url: "https://vercel.com/atom"}
+  - {name: "Supabase", url: "https://supabase.com/rss.xml"}
+  - {name: "Neon", url: "https://neon.tech/blog/rss.xml"}
+  - {name: "Hugging Face", url: "https://huggingface.co/blog/feed.xml"}
+  - {name: "Google AI", url: "https://blog.google/technology/ai/rss/"}
+  - {name: "OpenAI", url: "https://openai.com/blog/rss.xml"}
+  - {name: "Simon Willison", url: "https://simonwillison.net/atom/everything/"}
+  - {name: "Stack Overflow Blog", url: "https://stackoverflow.blog/feed/"}
+  - {name: "freeCodeCamp", url: "https://www.freecodecamp.org/news/rss/"}
+  - {name: "CSS-Tricks", url: "https://css-tricks.com/feed/"}
+  - {name: "Smashing Magazine", url: "https://smashingmagazine.com/feed/"}
+  - {name: "TechCrunch", url: "https://techcrunch.com/feed/"}
+  - {name: "Lobsters", url: "https://lobste.rs/rss"}
+  - {name: "Reddit Freebies", url: "https://www.reddit.com/r/freebies/.rss"}
+  - {name: "Reddit Cool GitHub Projects", url: "https://www.reddit.com/r/coolgithubprojects/.rss"}
+
+official:
+  - {name: "AWS Free Tier", url: "https://aws.amazon.com/free/"}
+  - {name: "Azure for Students", url: "https://azure.microsoft.com/en-us/free/students"}
+  - {name: "Google Cloud Free", url: "https://cloud.google.com/free"}
+  - {name: "IBM Cloud Free", url: "https://www.ibm.com/cloud/free"}
+  - {name: "Tencent Cloud Free", url: "https://www.tencentcloud.com/free"}
+  - {name: "Huawei Cloud Free", url: "https://www.huaweicloud.com/intl/en-us/free"}
+  - {name: "Vercel Pricing", url: "https://vercel.com/pricing"}
+  - {name: "Netlify Pricing", url: "https://www.netlify.com/pricing/"}
+  - {name: "Render Pricing", url: "https://render.com/pricing"}
+  - {name: "Railway Pricing", url: "https://railway.com/pricing"}
+  - {name: "Koyeb Pricing", url: "https://www.koyeb.com/pricing"}
+  - {name: "Fly.io Pricing", url: "https://fly.io/docs/about/pricing/"}
+  - {name: "Cloudflare Pricing", url: "https://www.cloudflare.com/plans/"}
+  - {name: "Supabase Pricing", url: "https://supabase.com/pricing"}
+  - {name: "Neon Pricing", url: "https://neon.tech/pricing"}
+  - {name: "Turso Pricing", url: "https://turso.tech/pricing"}
+  - {name: "Upstash Pricing", url: "https://upstash.com/pricing"}
+  - {name: "MongoDB Pricing", url: "https://www.mongodb.com/pricing"}
+  - {name: "Redis Pricing", url: "https://redis.io/pricing/"}
+  - {name: "PlanetScale Pricing", url: "https://planetscale.com/pricing"}
+  - {name: "CockroachDB Pricing", url: "https://www.cockroachlabs.com/pricing/"}
+  - {name: "Xata Pricing", url: "https://xata.io/pricing"}
+  - {name: "Aiven Pricing", url: "https://aiven.io/pricing"}
+  - {name: "Sentry Pricing", url: "https://sentry.io/pricing/"}
+  - {name: "Grafana Pricing", url: "https://grafana.com/pricing/"}
+  - {name: "Datadog Pricing", url: "https://www.datadoghq.com/pricing/"}
+  - {name: "New Relic Pricing", url: "https://newrelic.com/pricing"}
+  - {name: "PostHog Pricing", url: "https://posthog.com/pricing"}
+  - {name: "Better Stack Pricing", url: "https://betterstack.com/pricing"}
+  - {name: "Clerk Pricing", url: "https://clerk.com/pricing"}
+  - {name: "Auth0 Pricing", url: "https://auth0.com/pricing"}
+  - {name: "Resend Pricing", url: "https://resend.com/pricing"}
+  - {name: "Postmark Pricing", url: "https://postmarkapp.com/pricing"}
+  - {name: "Mailgun Pricing", url: "https://www.mailgun.com/pricing/"}
+  - {name: "Brevo Pricing", url: "https://www.brevo.com/pricing/"}
+  - {name: "Modal Pricing", url: "https://modal.com/pricing"}
+  - {name: "Baseten Pricing", url: "https://www.baseten.co/pricing/"}
+  - {name: "Deepgram Pricing", url: "https://deepgram.com/pricing"}
+  - {name: "ElevenLabs Pricing", url: "https://elevenlabs.io/pricing"}
+  - {name: "Cohere Pricing", url: "https://cohere.com/pricing"}
+  - {name: "Mistral Pricing", url: "https://mistral.ai/pricing"}
+  - {name: "Groq Pricing", url: "https://groq.com/pricing"}
+  - {name: "Cerebras Pricing", url: "https://cerebras.ai/pricing"}
+  - {name: "NVIDIA Build", url: "https://build.nvidia.com/"}
+  - {name: "GitHub Education", url: "https://education.github.com/pack"}
+  - {name: "JetBrains Education", url: "https://www.jetbrains.com/community/education/#students"}
+  - {name: "Notion Education", url: "https://www.notion.com/product/notion-for-education"}
+  - {name: "Figma Education", url: "https://www.figma.com/education/"}

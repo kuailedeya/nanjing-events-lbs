@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>南京同城活动 · 空间探索 · Apple Maps Layout</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    .amap-apple-filter .leaflet-tile {
+      filter: grayscale(88%) brightness(103%) contrast(92%) !important;
+    }
+
+    .amap-dark-filter .leaflet-tile {
+      filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(95%) !important;
+    }
+
+    .apple-marker {
+      transform: translate(-50%, -100%);
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform;
+      white-space: nowrap !important;
+    }
+    .apple-marker:hover {
+      transform: translate(-50%, -108%) scale(1.08);
+      z-index: 50 !important;
+    }
+    .apple-marker.active {
+      transform: translate(-50%, -114%) scale(1.15);
+      z-index: 60 !important;
+    }
+    .apple-marker.active .marker-pill {
+      background-color: #0f172a !important;
+      color: #ffffff !important;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35), 0 4px 10px rgba(15, 23, 42, 0.2) !important;
+      border-color: #0f172a !important;
+    }
+    .apple-marker.active .marker-dot {
+      background-color: #ffffff !important;
+    }
+
+    .leaflet-popup-content-wrapper {
+      background: rgba(255, 255, 255, 0.95) !important;
+      backdrop-filter: blur(20px) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+      border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    }
+    .leaflet-popup-tip {
+      background: rgba(255, 255, 255, 0.95) !important;
+    }
+  </style>
+</head>
+<body class="h-full w-full overflow-hidden bg-[#F5F5F7] select-none text-slate-900">
+  <div id="app" class="relative w-screen h-screen overflow-hidden font-sans antialiased">
+
+    <!-- 1. 全屏底图底层 (高德官方全量图源，原生 GCJ-02 火星坐标) -->
+    <div 
+      id="map-container" 
+      :class="[
+        'absolute inset-0 w-full h-full z-0 transition-all duration-300',
+        mapStyleMode === 'apple' ? 'amap-apple-filter' : '',
+        mapStyleMode === 'dark' ? 'amap-dark-filter' : ''
+      ]"
+    >
+      <div id="leaflet-map" class="w-full h-full"></div>
+    </div>
+
+    <!-- 2. 顶部：悬浮于地图左上方的通透圆角浮动岛屿 (Floating Island Suspended in Upper-Left) -->
+    <header class="absolute top-6 left-6 z-20 pointer-events-auto max-w-[660px]">
+      <div class="bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-[22px] shadow-[0_20px_50px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.03)] border border-white/80 p-2 sm:p-2.5 flex items-center gap-2.5 transition-all">
+        
+        <!-- 搜索框 -->
+        <div class="flex-1 relative flex items-center min-w-[200px]">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="搜索南京活动、展会、地标或场馆..."
+            class="w-full pl-9 pr-7 py-2 bg-black/[0.04] focus:bg-white rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 outline-none border border-transparent focus:border-black/[0.08] focus:ring-4 focus:ring-[#007AFF]/12 transition-all duration-200"
+          />
+          <button
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            class="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- macOS Sonoma 风格滑动胶囊分段器 -->
+        <div class="flex items-center p-1 bg-black/[0.04] rounded-xl text-xs font-medium text-slate-600 shrink-0">
+          <button
+            v-for="cat in categoryOptions"
+            :key="cat.value"
+            @click="activeCategory = cat.value"
+            :class="[
+              'px-3.5 py-1 rounded-lg transition-all duration-200 text-xs cursor-pointer',
+              activeCategory === cat.value
+                ? 'bg-white text-slate-900 shadow-[0_2px_6px_rgba(0,0,0,0.1),0_1px_2px_rgba(0,0,0,0.06)] font-semibold'
+                : 'text-slate-500 hover:text-slate-900'
+            ]"
+          >
+            {{ cat.label }}
+          </button>
+        </div>
+
+        <!-- 极简筛选抽屉按钮 -->
+        <button
+          @click="showFilterPopover = !showFilterPopover"
+          :class="[
+            'p-2 rounded-xl transition-all cursor-pointer relative',
+            hasActiveFilter ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-black/[0.04]'
+          ]"
+          title="筛选范围与行政区"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+          </svg>
+          <span v-if="hasActiveFilter" class="w-1.5 h-1.5 rounded-full bg-[#34C759] absolute top-1.5 right-1.5"></span>
+        </button>
+
+        <!-- 增量同步 -->
+        <button
+          @click="triggerSync"
+          :disabled="isSyncing"
+          class="p-2 rounded-xl text-slate-600 hover:bg-black/[0.04] transition-all cursor-pointer"
+          title="增量同步最新社媒情报"
+        >
+          <svg :class="['w-4 h-4', isSyncing ? 'animate-spin text-[#007AFF]' : '']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+        </button>
+
+      </div>
+
+      <!-- 下拉微质感 Popover 筛选器 -->
+      <div
+        v-if="showFilterPopover"
+        class="mt-2.5 p-3.5 bg-white/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[22px] shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-white/80 flex items-center gap-3 text-xs animate-in fade-in slide-in-from-top-2 duration-200"
+      >
+        <div class="flex items-center gap-1.5 text-slate-600">
+          <svg class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+          </svg>
+          <select v-model="selectedDistrict" @change="onDistrictChange" class="bg-transparent border-0 outline-none font-medium cursor-pointer text-slate-800 text-xs">
+            <option value="ALL">全城区域 (11区)</option>
+            <option v-for="d in districts" :key="d" :value="d">{{ d }}</option>
+          </select>
+        </div>
+
+        <div class="h-3.5 w-px bg-slate-200"></div>
+
+        <div class="flex items-center gap-1.5 text-slate-600">
+          <svg class="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+          </svg>
+          <select v-model="radiusFilter" class="bg-transparent border-0 outline-none font-medium cursor-pointer text-slate-800 text-xs">
+            <option :value="0">全城距离</option>
+            <option :value="3">3 km 内 (核心商圈)</option>
+            <option :value="5">5 km 内 (主城生活圈)</option>
+            <option :value="10">10 km 内 (绕城圈)</option>
+            <option :value="20">20 km 内 (都市圈)</option>
+          </select>
+        </div>
+
+        <div class="h-3.5 w-px bg-slate-200"></div>
+
+        <button
+          @click="freeOnly = !freeOnly"
+          :class="[
+            'px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5',
+            freeOnly ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+          ]"
+        >
+          <span :class="['w-1.5 h-1.5 rounded-full', freeOnly ? 'bg-[#34C759]' : 'bg-slate-300']"></span>
+          仅看免费
+        </button>
+
+        <button
+          v-if="hasActiveFilter"
+          @click="resetFilters"
+          class="ml-auto text-[11px] text-[#007AFF] hover:underline font-semibold cursor-pointer"
+        >
+          重置
+        </button>
+      </div>
+    </header>
+
+    <!-- 3. 左下角：高德地图深度功能控制岛 -->
+    <div class="absolute bottom-6 left-6 z-20 flex items-center gap-2 pointer-events-auto">
+      
+      <!-- 地图模式切换胶囊 -->
+      <div class="bg-white/80 backdrop-blur-2xl backdrop-saturate-150 p-1 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 flex items-center gap-1 text-xs">
+        <button
+          v-for="mode in mapModes"
+          :key="mode.id"
+          @click="setMapMode(mode.id)"
+          :class="[
+            'px-3 py-1.5 rounded-xl font-medium transition-all cursor-pointer flex items-center gap-1.5 text-xs',
+            mapStyleMode === mode.id
+              ? 'bg-slate-950 text-white font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.15)]'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-black/[0.03]'
+          ]"
+        >
+          <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: mode.color }"></span>
+          <span>{{ mode.label }}</span>
+        </button>
+      </div>
+
+      <!-- 新街口中心辐射同心圈切换 -->
+      <button
+        @click="toggleRings"
+        :class="[
+          'px-3 py-2 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer',
+          showRings ? 'bg-slate-950 text-white border-slate-950 shadow-md' : 'text-slate-700 hover:bg-white'
+        ]"
+        title="在地图上显示新街口 3km/5km/10km 辐射同心圈"
+      >
+        <span class="w-3.5 h-3.5 flex items-center justify-center font-bold" :class="showRings ? 'text-[#34C759]' : 'text-slate-400'">◎</span>
+        <span>辐射圈</span>
+      </button>
+
+      <!-- 一键复位新街口中心 -->
+      <button
+        @click="recenterMap"
+        class="p-2.5 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-slate-700 hover:text-slate-950 hover:bg-white transition cursor-pointer"
+        title="复位至新街口中心"
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/>
+        </svg>
+      </button>
+
+    </div>
+
+    <!-- 4. 右侧：Airbnb 风格悬浮卡片抽屉 (Liquid Glass Frosted Sheet) -->
+    <aside
+      :class="[
+        'absolute top-6 right-6 bottom-6 z-20 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pointer-events-auto',
+        drawerOpen
+          ? 'w-[380px] md:w-[440px] translate-x-0'
+          : 'w-12 translate-x-[calc(100%-2.5rem)]'
+      ]"
+    >
+      <div class="relative w-full h-full bg-[#F5F5F7]/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[28px] border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
+        
+        <!-- 抽屉头部 (Mac 风格标题栏) -->
+        <div class="px-5 pt-4 pb-3 flex items-center justify-between border-b border-black/[0.04]">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-slate-900 tracking-tight">南京精选探索</h2>
+            <span class="text-xs font-semibold text-slate-400 tabular-nums">({{ filteredEvents.length }})</span>
+          </div>
+
+          <button
+            @click="drawerOpen = !drawerOpen"
+            class="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center transition shadow-sm cursor-pointer"
+            :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
+          >
+            <svg :class="['w-4 h-4 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Bento Grid 活动卡片瀑布流 -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar" id="cards-container">
+          <div
+            v-for="item in filteredEvents"
+            :key="item.id"
+            :id="'card-' + item.id"
+            @click="focusEvent(item)"
+            :class="[
+              'group bg-white rounded-2xl p-3.5 transition-all duration-300 cursor-pointer border flex flex-col',
+              activeEventId === item.id
+                ? 'ring-2 ring-[#007AFF] border-transparent shadow-[0_16px_36px_rgba(0,122,255,0.16)] -translate-y-1'
+                : 'border-black/[0.04] shadow-[0_4px_16px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1'
+            ]"
+          >
+            <!-- Bento 封面图 (高颜值潮流探索封面，带圆角优化 rounded-xl) -->
+            <div class="relative w-full h-36 rounded-xl overflow-hidden mb-3 bg-slate-100 group-hover:scale-[1.01] transition-transform duration-300 shrink-0">
+              <img
+                :src="getEventCover(item)"
+                :alt="item.title"
+                loading="lazy"
+                class="w-full h-full object-cover rounded-xl"
+              />
+              <div class="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10"></div>
+              
+              <!-- 悬浮在封面左上方的类别胶囊 -->
+              <span class="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-tight backdrop-blur-md bg-white/90 shadow-sm flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: getMarkerDotColor(item.category) }"></span>
+                <span class="text-slate-800">{{ item.category }}</span>
+              </span>
+
+              <!-- 悬浮在封面右上方的距离标签 -->
+              <span class="absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium tracking-tight backdrop-blur-md bg-black/50 text-white tabular-nums flex items-center gap-1">
+                <span>{{ item.distance_km }} km</span>
+                <span class="text-white/60">·</span>
+                <span class="text-white/80">新街口</span>
+              </span>
+
+              <!-- 悬浮在封面左下方的免票/福利徽标 -->
+              <span class="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded-lg text-[11px] font-medium tracking-tight backdrop-blur-md bg-white/90 text-slate-800 flex items-center gap-1">
+                <span class="font-semibold text-[#34C759]" v-if="item.is_free">免票直入</span>
+                <span class="text-slate-700 font-medium" v-else>{{ item.benefit }}</span>
+              </span>
+            </div>
+
+            <!-- 主标题 (严格 font-semibold text-slate-900，潮流探索排版) -->
+            <h3 class="text-sm font-semibold text-slate-900 leading-snug tracking-[-0.01em] group-hover:text-[#007AFF] transition-colors mb-2 line-clamp-2">
+              {{ item.title }}
+            </h3>
+
+            <!-- 地理与时间元数据行 -->
+            <div class="text-xs text-slate-500 space-y-1 mb-3">
+              <div class="flex items-center gap-1.5 text-slate-600">
+                <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span class="truncate font-medium text-slate-800">{{ item.address }}</span>
+                <span class="text-slate-300">·</span>
+                <span class="shrink-0 text-slate-500 bg-black/[0.03] px-1.5 py-0.5 rounded text-[11px]">{{ item.district }}</span>
+              </div>
+              <div class="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                <svg class="w-3.5 h-3.5 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span>{{ item.event_time_text }}</span>
+              </div>
+            </div>
+
+            <!-- 操作底栏：状态核销胶囊 + 高德导航 + Obsidian 笔记 -->
+            <div class="pt-2.5 border-t border-black/[0.04] flex items-center justify-between mt-auto">
+              <!-- 状态切换胶囊 -->
+              <button
+                @click.stop="cycleStatus(item)"
+                :class="[
+                  'px-2.5 py-1 rounded-full text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs',
+                  getStatusClass(item.status)
+                ]"
+                title="点击切换核销状态并同步至 Obsidian"
+              >
+                <span :class="['w-1.5 h-1.5 rounded-full', getStatusDotClass(item.status)]"></span>
+                <span>{{ item.status }}</span>
+              </button>
+
+              <div class="flex items-center gap-2">
+                <!-- 高德原生路线规划导航 -->
+                <a
+                  :href="getAmapNaviUrl(item)"
+                  target="_blank"
+                  @click.stop
+                  class="text-slate-500 hover:text-[#007AFF] text-[11px] font-medium flex items-center gap-1 py-1 px-2 hover:bg-black/[0.04] rounded-lg transition-colors"
+                  title="调用高德地图进行真实路线规划导航"
+                >
+                  <svg class="w-3 h-3 text-slate-400 group-hover:text-[#007AFF]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 19 21 12 17 5 21 12 2"/>
+                  </svg>
+                  <span>导航</span>
+                </a>
+
+                <!-- Obsidian 笔记跳转 -->
+                <a
+                  :href="item.obsidian_uri"
+                  @click.stop
+                  class="text-slate-400 hover:text-slate-900 text-[11px] font-medium flex items-center gap-1 py-1 px-2 hover:bg-black/[0.04] rounded-lg transition-colors"
+                  title="在本地 Obsidian 查看笔记"
+                >
+                  <svg class="w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <span>笔记</span>
+                </a>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 空状态 -->
+          <div v-if="filteredEvents.length === 0" class="py-20 text-center text-xs text-slate-400">
+            暂无匹配的同城活动
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div>
+
+  <script>
+    const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+
+    const INITIAL_EVENTS = [{"id": "wx_33b3d2e52c0c", "post_id": "wx_33b3d2e52c0c", "title": "全部免门票!10月多个景区对南京人免费开放!", "category": "南京活动", "sub_category": "景区免票日", "start_time": "2026-08-01T09:00:00+08:00", "end_time": "2026-10-31T18:00:00+08:00", "event_time": "2026年8月1日-10月31日", "event_time_text": "2026年8月1日-10月31日", "district": "鼓楼区", "address": "阅江楼", "location": "阅江楼", "lng": 118.744673, "lat": 32.094379, "geom": "POINT(118.744673 32.094379)", "benefit": "免费开放", "is_free": true, "action_guide": "需提前在公众号/小程序预登记或报名入场", "summary": "【阅江楼】免费开放（2026年8月1日-10月31日）— 10月,不仅南京有免费开放日全国多个景点都有免费获得趁着淡季... (免票福利不含景", "tags": ["免费/0元羊毛", "鼓楼区", "景区免票日", "微信公众号", "阅江楼"], "extra_info": {"platform": "微信公众号", "author": "南京本地宝", "publish_date": "2026-10-20", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "10月,不仅南京有免费开放日全国多个景点都有免费获得趁着淡季... (免票福利不含景区内区间车、自驾费、游船、骑马等二次消费项...", "获取南京免费信息汇总", "10月，不仅南京有免费开放日", "全国多个景点都有免费获得", "免费开放日时间：10月31日（周六）"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "南京本地宝", "publish_date": "2026-10-20", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "10月,不仅南京有免费开放日全国多个景点都有免费获得趁着淡季... (免票福利不含景区内区间车、自驾费、游船、骑马等二次消费项...", "获取南京免费信息汇总", "10月，不仅南京有免费开放日", "全国多个景点都有免费获得", "免费开放日时间：10月31日（周六）"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571833&ver=7039&signature=WM8VjCPWeqiqvjqgcmiJWdX56SCCOseaMPLrpaYcwpD7BFFgSXNNWsj9jmk8G6kuQxwfkYHLGCJW2dsXj8U2mCG*A96OtwkndsNDjgXY*596wABtLWpJ40DT7WPm1MbR&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571833&ver=7039&signature=WM8VjCPWeqiqvjqgcmiJWdX56SCCOseaMPLrpaYcwpD7BFFgSXNNWsj9jmk8G6kuQxwfkYHLGCJW2dsXj8U2mCG*A96OtwkndsNDjgXY*596wABtLWpJ40DT7WPm1MbR&new=1", "obsidian_path": "05_社媒情报库/南京活动/2026-10-20_全部免门票!10月多个景区对南京人免费开放!.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E6%B4%BB%E5%8A%A8/2026-10-20_%E5%85%A8%E9%83%A8%E5%85%8D%E9%97%A8%E7%A5%A8%2110%E6%9C%88%E5%A4%9A%E4%B8%AA%E6%99%AF%E5%8C%BA%E5%AF%B9%E5%8D%97%E4%BA%AC%E4%BA%BA%E5%85%8D%E8%B4%B9%E5%BC%80%E6%94%BE%21.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_0e91fefd7f2a", "post_id": "wx_0e91fefd7f2a", "title": "南京本周特色活动推荐(10.19-10.25)", "category": "南京活动", "sub_category": "市集游园", "start_time": "2026-10-23T09:00:00+08:00", "end_time": "2026-10-23T20:00:00+08:00", "event_time": "10月23日—25日", "event_time_text": "10月23日—25日", "district": "玄武区", "address": "南京国际展览中心 / 夫子庙", "location": "南京国际展览中心 / 夫子庙", "lng": 118.812073, "lat": 32.077155, "geom": "POINT(118.812073 32.077155)", "benefit": "免费", "is_free": true, "action_guide": "现场拍照带指定话题发小红书笔记，至服务台领福利", "summary": "【南京国际展览中心 / 夫子庙】免费（10月23日—25日）— 时间:10月23日—25日地点:夫子庙核心区节目单:「好会来市」 一起来事市集南京i", "tags": ["免费/0元羊毛", "玄武区", "市集游园", "微信公众号"], "extra_info": {"platform": "微信公众号", "author": "南京本地宝", "publish_date": "2026-10-19", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "时间:10月23日—25日地点:夫子庙核心区节目单:「好会来市」 一起来事市集南京ifc商场联合南京消费发布首个原创市集IP「好会...", "获取南京免费信息汇总", "整个南京城变成赛场，靠走路＋地铁＋公交，去各个点位打卡集章，走完就有奖牌，不计名次，纯体验派友好。", "南京国际展览中心", "第十四届湖熟菊花展"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "南京本地宝", "publish_date": "2026-10-19", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "时间:10月23日—25日地点:夫子庙核心区节目单:「好会来市」 一起来事市集南京ifc商场联合南京消费发布首个原创市集IP「好会...", "获取南京免费信息汇总", "整个南京城变成赛场，靠走路＋地铁＋公交，去各个点位打卡集章，走完就有奖牌，不计名次，纯体验派友好。", "南京国际展览中心", "第十四届湖熟菊花展"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571836&ver=7039&signature=WM8VjCPWeqiqvjqgcmiJWdX56SCCOseaMPLrpaYcwpCOBUoOOYenSfN3rup*qu12n2GwhONI9sUETG2Nm4Y21VYg9XOr09T1pmk6ehrHEFAcwTjq1D5GdIrT8*ZPnUNv&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571836&ver=7039&signature=WM8VjCPWeqiqvjqgcmiJWdX56SCCOseaMPLrpaYcwpCOBUoOOYenSfN3rup*qu12n2GwhONI9sUETG2Nm4Y21VYg9XOr09T1pmk6ehrHEFAcwTjq1D5GdIrT8*ZPnUNv&new=1", "obsidian_path": "05_社媒情报库/南京活动/2026-10-19_南京本周特色活动推荐(10.19-10.25).md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E6%B4%BB%E5%8A%A8/2026-10-19_%E5%8D%97%E4%BA%AC%E6%9C%AC%E5%91%A8%E7%89%B9%E8%89%B2%E6%B4%BB%E5%8A%A8%E6%8E%A8%E8%8D%90%2810.19-10.25%29.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_fd0cb00e9b69", "post_id": "wx_fd0cb00e9b69", "title": "治愈暴击|星星人农场主题展华东首展落地南京万象天地", "category": "南京展会", "sub_category": "艺术特展", "start_time": "2026-10-17T09:00:00+08:00", "end_time": "2026-10-31T21:00:00+08:00", "event_time": "近期进行中", "event_time_text": "近期进行中", "district": "秦淮区", "address": "南京万象天地", "location": "南京万象天地", "lng": 118.778341, "lat": 32.023633, "geom": "POINT(118.778341 32.023633)", "benefit": "免费对外开放", "is_free": true, "action_guide": "免预约，直接前往现场打卡", "summary": "【南京万象天地】免费对外开放（近期进行中）— 泡泡玛特星星人农场主题展华东首展正式登陆南京万象天地,一座... 展览全程免费对外开", "tags": ["免费/0元羊毛", "秦淮区", "艺术特展", "微信公众号", "南京万象天地"], "extra_info": {"platform": "微信公众号", "author": "鼎艺潮玩", "publish_date": "2026-10-17", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "泡泡玛特星星人农场主题展华东首展正式登陆南京万象天地,一座... 展览全程免费对外开放,打卡无需预约,直接前往即可.除户外雕...", "当星光落入田园，治愈 IP 星星人奔赴金陵！泡泡玛特星星人农场主题展华东首展正式登陆南京万象天地，一座藏在城市街区里的梦幻星星农场，正式和大家见面。", "本次展览打造超 1000㎡沉浸式农场主题空间，现场一共设置8 组农场风 IP 玻璃钢打卡雕塑装置。全场最吸睛的 C 位，便是约 4m 高巨型星星人标志性玻璃钢主雕塑，搭配其余 7 组造型各异...", "展区沿 L1 户外街区与梧桐广场排布，采用开放式逛展路线，不用局限在封闭场馆，漫步街区就能偶遇星星人。展览全程免费对外开放，打卡无需预约，直接前往即可。", "地点：南京万象天地 L1 户外街区、梧桐广场"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "鼎艺潮玩", "publish_date": "2026-10-17", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "泡泡玛特星星人农场主题展华东首展正式登陆南京万象天地,一座... 展览全程免费对外开放,打卡无需预约,直接前往即可.除户外雕...", "当星光落入田园，治愈 IP 星星人奔赴金陵！泡泡玛特星星人农场主题展华东首展正式登陆南京万象天地，一座藏在城市街区里的梦幻星星农场，正式和大家见面。", "本次展览打造超 1000㎡沉浸式农场主题空间，现场一共设置8 组农场风 IP 玻璃钢打卡雕塑装置。全场最吸睛的 C 位，便是约 4m 高巨型星星人标志性玻璃钢主雕塑，搭配其余 7 组造型各异...", "展区沿 L1 户外街区与梧桐广场排布，采用开放式逛展路线，不用局限在封闭场馆，漫步街区就能偶遇星星人。展览全程免费对外开放，打卡无需预约，直接前往即可。", "地点：南京万象天地 L1 户外街区、梧桐广场"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571831&ver=7039&signature=kqF*50A6jl1gjwIm-jaXQb3qXSrs9RoSX133vIuRgUJ0PjBQdMeBKQG8ZBfa3nwYodcsuFeZNkf9FANSbQgfrOIyfgMaTcAAlW*6GBfCd9NNFzoNabLEmdMJt42ERUrk&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571831&ver=7039&signature=kqF*50A6jl1gjwIm-jaXQb3qXSrs9RoSX133vIuRgUJ0PjBQdMeBKQG8ZBfa3nwYodcsuFeZNkf9FANSbQgfrOIyfgMaTcAAlW*6GBfCd9NNFzoNabLEmdMJt42ERUrk&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-17_治愈暴击_星星人农场主题展华东首展落地南京万象天地.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-17_%E6%B2%BB%E6%84%88%E6%9A%B4%E5%87%BB_%E6%98%9F%E6%98%9F%E4%BA%BA%E5%86%9C%E5%9C%BA%E4%B8%BB%E9%A2%98%E5%B1%95%E5%8D%8E%E4%B8%9C%E9%A6%96%E5%B1%95%E8%90%BD%E5%9C%B0%E5%8D%97%E4%BA%AC%E4%B8%87%E8%B1%A1%E5%A4%A9%E5%9C%B0.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_5e855d59f61b", "post_id": "wx_5e855d59f61b", "title": "双11支付羊毛合集|微信/ 各大银行卡 /支付宝/ 抖音 /云闪付,亲测可冲", "category": "羊毛福利", "sub_category": "银行/支付立减金", "start_time": "2026-10-17T09:00:00+08:00", "end_time": "2026-10-31T21:00:00+08:00", "event_time": "每周六", "event_time_text": "每周六", "district": "全城通用", "address": "支付宝 / 微信支付", "location": "支付宝 / 微信支付", "lng": 118.781292, "lat": 32.037101, "geom": "POINT(118.781292 32.037101)", "benefit": "领8元还款金", "is_free": true, "action_guide": "现场拍照带指定话题发小红书笔记，至服务台领福利", "summary": "【支付宝 / 微信支付】领8元还款金（每周六）— 至高有1111元微信立减金,我只抽到2.88元.满足条件后可以点击... 多看看支付", "tags": ["免费/0元羊毛", "全城通用", "银行/支付立减金", "微信公众号", "支付宝 / 微信支付"], "extra_info": {"platform": "微信公众号", "author": "微财社", "publish_date": "2026-10-17", "key_points": ["南京情报库", "类型/羊毛福利", "来源/微信公众号", "至高有1111元微信立减金,我只抽到2.88元.满足条件后可以点击... 多看看支付宝、银行卡优惠、微信摇一摇、抖音支付和云闪付的活...", "会弹出立减金、京东满减券、滴滴出行券、QQ 音乐会员券等等。", "，这个真的太实在了！还可以叠加银行卡的各类活动，比如农行最近的微信支付至高 3 倍积分，积分能在支付宝支付时抵扣，叠加之后优惠肉眼可见。", "两个活动叠加完成，可领16元还款金，前提是要看活动规则，按要求写一篇50字以上的笔记并分享到小红书，小红书点赞+收藏≥10，通过审核后就可领奖，门槛都比较低，数量都是2000份，抓紧时间先到...", "c 10月15日--11月30日手机支付单笔消费满299元或累计消费满3888元可抽奖，至高有1111元微信立减金，我只抽到2.88元。"], "price_num": 0.0, "geocode_source": "nanjing_citywide_channel", "likes": 0}, "platform": "微信公众号", "author": "微财社", "publish_date": "2026-10-17", "key_points": ["南京情报库", "类型/羊毛福利", "来源/微信公众号", "至高有1111元微信立减金,我只抽到2.88元.满足条件后可以点击... 多看看支付宝、银行卡优惠、微信摇一摇、抖音支付和云闪付的活...", "会弹出立减金、京东满减券、滴滴出行券、QQ 音乐会员券等等。", "，这个真的太实在了！还可以叠加银行卡的各类活动，比如农行最近的微信支付至高 3 倍积分，积分能在支付宝支付时抵扣，叠加之后优惠肉眼可见。", "两个活动叠加完成，可领16元还款金，前提是要看活动规则，按要求写一篇50字以上的笔记并分享到小红书，小红书点赞+收藏≥10，通过审核后就可领奖，门槛都比较低，数量都是2000份，抓紧时间先到...", "c 10月15日--11月30日手机支付单笔消费满299元或累计消费满3888元可抽奖，至高有1111元微信立减金，我只抽到2.88元。"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571880&ver=7039&signature=gy6hIfd*JCgw4FdzN6jYoaW-qLOguVZDzdEOGPYs8J75SN5LkWYsX59duSzAeteRixUCE2YrG8jG6RJ9H6AlUkiiPbWk1W6wBDjv7pCyJ3C7kJZ8BKpcBUhrqDMFz86j&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571880&ver=7039&signature=gy6hIfd*JCgw4FdzN6jYoaW-qLOguVZDzdEOGPYs8J75SN5LkWYsX59duSzAeteRixUCE2YrG8jG6RJ9H6AlUkiiPbWk1W6wBDjv7pCyJ3C7kJZ8BKpcBUhrqDMFz86j&new=1", "obsidian_path": "05_社媒情报库/羊毛福利/2026-10-17_双11支付羊毛合集_微信_ 各大银行卡 _支付宝_ 抖音 _云闪付,亲测.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E7%BE%8A%E6%AF%9B%E7%A6%8F%E5%88%A9/2026-10-17_%E5%8F%8C11%E6%94%AF%E4%BB%98%E7%BE%8A%E6%AF%9B%E5%90%88%E9%9B%86_%E5%BE%AE%E4%BF%A1_%20%E5%90%84%E5%A4%A7%E9%93%B6%E8%A1%8C%E5%8D%A1%20_%E6%94%AF%E4%BB%98%E5%AE%9D_%20%E6%8A%96%E9%9F%B3%20_%E4%BA%91%E9%97%AA%E4%BB%98%2C%E4%BA%B2%E6%B5%8B.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_f6842d9b3baa", "post_id": "wx_f6842d9b3baa", "title": "2026年国内10月展会排期表(全)|超200场展会一键收藏", "category": "南京展会", "sub_category": "大型博览会", "start_time": "2026-10-22T09:00:00+08:00", "end_time": "2026-10-24T18:00:00+08:00", "event_time": "10.22-10.24", "event_time_text": "10.22-10.24", "district": "玄武区", "address": "南京同城", "location": "南京同城", "lng": 118.801984, "lat": 32.04443, "geom": "POINT(118.801984 32.04443)", "benefit": "预登记免费领票", "is_free": true, "action_guide": "直接前往或点击原文链接查看", "summary": "【南京同城】预登记免费领票（10.22-10.24）— .10.22-10.24苏交会-江苏南京新能源电动车及汽车展2026.10.22-.", "tags": ["免费/0元羊毛", "玄武区", "大型博览会", "微信公众号", "南京同城"], "extra_info": {"platform": "微信公众号", "author": "聚展", "publish_date": "2026-10-16", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", ".10.22-10.24苏交会-江苏南京新能源电动车及汽车展2026.10.22-...塑料交易会2026.10.28-10.30济南市展会名称时间济南全国汽车配...", "展馆等网络整理，目的为方便行业人士参展观展提供便利。展会最终排期，以实际举办时间为准。", "如需上述展会详细信息（如门票、展位等信息），可联系聚展客服哦", "2026.10.03-10.04", "2026.10.08-10.10"], "price_num": 0.0, "geocode_source": "nanjing_default_center", "likes": 0}, "platform": "微信公众号", "author": "聚展", "publish_date": "2026-10-16", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", ".10.22-10.24苏交会-江苏南京新能源电动车及汽车展2026.10.22-...塑料交易会2026.10.28-10.30济南市展会名称时间济南全国汽车配...", "展馆等网络整理，目的为方便行业人士参展观展提供便利。展会最终排期，以实际举办时间为准。", "如需上述展会详细信息（如门票、展位等信息），可联系聚展客服哦", "2026.10.03-10.04", "2026.10.08-10.10"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571828&ver=7039&signature=kwZJSzT66DDYSq2WVjfhb853ClMTFCI-KlOLWKU48k0ep1y7ppxgBXnWQpJLol8idKUXFAMs8yhyVboWBlIDnARFrMDV7S-2Y*XHLMXvjZ-O-RNT9nfT9BWI3ptIfrCT&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571828&ver=7039&signature=kwZJSzT66DDYSq2WVjfhb853ClMTFCI-KlOLWKU48k0ep1y7ppxgBXnWQpJLol8idKUXFAMs8yhyVboWBlIDnARFrMDV7S-2Y*XHLMXvjZ-O-RNT9nfT9BWI3ptIfrCT&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-16_2026年国内10月展会排期表(全)_超200场展会一键收藏.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-16_2026%E5%B9%B4%E5%9B%BD%E5%86%8510%E6%9C%88%E5%B1%95%E4%BC%9A%E6%8E%92%E6%9C%9F%E8%A1%A8%28%E5%85%A8%29_%E8%B6%85200%E5%9C%BA%E5%B1%95%E4%BC%9A%E4%B8%80%E9%94%AE%E6%94%B6%E8%97%8F.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_3131ff6067bc", "post_id": "wx_3131ff6067bc", "title": "冲冲冲!10月全国建行月月刷活动入口10月银行月月刷立减金合集!多家银行羊毛速薅,省钱党必冲", "category": "羊毛福利", "sub_category": "银行/支付立减金", "start_time": "2026-09-01T09:00:00+08:00", "end_time": "2026-10-31T18:00:00+08:00", "event_time": "2026年9月1日 - 10月31日", "event_time_text": "2026年9月1日 - 10月31日", "district": "全城通用", "address": "微信支付 / 建行APP", "location": "微信支付 / 建行APP", "lng": 118.784545, "lat": 32.043921, "geom": "POINT(118.784545 32.043921)", "benefit": "1-99元", "is_free": true, "action_guide": "需提前在公众号/小程序预登记或报名入场", "summary": "【微信支付 / 建行APP】1-99元（2026年9月1日 - 10月31日）— 10月银行月月刷立减金合集建行主活动入口 · 多家银行羊毛速薅 · 省钱党必冲 导语", "tags": ["免费/0元羊毛", "全城通用", "银行/支付立减金", "微信公众号"], "extra_info": {"platform": "微信公众号", "author": "京科技", "publish_date": "2026-10-16", "key_points": ["南京情报库", "类型/羊毛福利", "来源/微信公众号", "10月银行月月刷立减金合集建行主活动入口 · 多家银行羊毛速薅 · 省钱党必冲 导语:10月是银行活动的密集期,建行、工行、中行...", "💳 10月银行月月刷立减金合集", "建行主活动入口 · 多家银行羊毛速薅 · 省钱党必冲", "10月是银行活动的密集期，建行、工行、中行、招行、农行、华夏都有月月刷活动上线，门槛从几百到几千不等，奖励从几块钱到几百块。但今年有个明显变化：", "部分银行奖池大幅缩水，小额档位占了九成以上"], "price_num": 0.0, "geocode_source": "nanjing_citywide_channel", "likes": 0}, "platform": "微信公众号", "author": "京科技", "publish_date": "2026-10-16", "key_points": ["南京情报库", "类型/羊毛福利", "来源/微信公众号", "10月银行月月刷立减金合集建行主活动入口 · 多家银行羊毛速薅 · 省钱党必冲 导语:10月是银行活动的密集期,建行、工行、中行...", "10月银行月月刷立减金合集", "建行主活动入口 · 多家银行羊毛速薅 · 省钱党必冲", "10月是银行活动的密集期，建行、工行、中行、招行、农行、华夏都有月月刷活动上线，门槛从几百到几千不等，奖励从几块钱到几百块。但今年有个明显变化：", "部分银行奖池大幅缩水，小额档位占了九成以上"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571839&ver=7039&signature=5pITpnDHa6SQJPmdu9kUhRaDpTV5JiGHfK2jAkHolO69iuDCk7sPuXV1ApxJx8oemTRvndsbipolDBoee4960VzkRzhjMU07OLjw*dAtxbfYSpwRbcT-KK2cEXZXjh6x&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571839&ver=7039&signature=5pITpnDHa6SQJPmdu9kUhRaDpTV5JiGHfK2jAkHolO69iuDCk7sPuXV1ApxJx8oemTRvndsbipolDBoee4960VzkRzhjMU07OLjw*dAtxbfYSpwRbcT-KK2cEXZXjh6x&new=1", "obsidian_path": "05_社媒情报库/羊毛福利/2026-10-16_冲冲冲!10月全国建行月月刷活动入口10月银行月月刷立减金合集!多家银行.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E7%BE%8A%E6%AF%9B%E7%A6%8F%E5%88%A9/2026-10-16_%E5%86%B2%E5%86%B2%E5%86%B2%2110%E6%9C%88%E5%85%A8%E5%9B%BD%E5%BB%BA%E8%A1%8C%E6%9C%88%E6%9C%88%E5%88%B7%E6%B4%BB%E5%8A%A8%E5%85%A5%E5%8F%A310%E6%9C%88%E9%93%B6%E8%A1%8C%E6%9C%88%E6%9C%88%E5%88%B7%E7%AB%8B%E5%87%8F%E9%87%91%E5%90%88%E9%9B%86%21%E5%A4%9A%E5%AE%B6%E9%93%B6%E8%A1%8C.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "xhs_79a2d4ef64ea", "post_id": "xhs_79a2d4ef64ea", "title": "人机battle、旧书盲盒...在夫子庙,逛到了最好玩的市集!", "category": "南京活动", "sub_category": "市集游园", "start_time": "2026-10-23T09:00:00+08:00", "end_time": "2026-10-23T20:00:00+08:00", "event_time": "2026年10月23日—25日", "event_time_text": "2026年10月23日—25日", "district": "秦淮区", "address": "夫子庙", "location": "夫子庙", "lng": 118.788063, "lat": 32.021287, "geom": "POINT(118.788063 32.021287)", "benefit": "免费开放", "is_free": true, "action_guide": "现场拍照带话题 #金陵旧书市集 发小红书笔记，至服务台领福利", "summary": "【夫子庙】免费开放（2026年10月23日—25日）— 在夫子庙的熙攘烟火中焕发新生.踏入市集,扑面而来旧书独有的... 带#金陵旧书市集#", "tags": ["免费/0元羊毛", "秦淮区", "市集游园", "小红书", "夫子庙"], "extra_info": {"platform": "小红书", "author": "南京吃喝玩乐", "publish_date": "2026-10-16", "key_points": ["南京情报库", "类型/南京活动", "来源/小红书", "在夫子庙的熙攘烟火中焕发新生.踏入市集,扑面而来旧书独有的... 带#金陵旧书市集#文枢古籍#文枢开讲 三个话题发布小红书笔记,...", "去年的旧书市集圈粉无数，收获书迷们满满好评，", "10月23日‑25日", "，金陵旧书市集再进夫子庙携书卷气如约而至。", "汇聚 70 余家省内外特色书商，联动旧书巷内20家本土书店，设置近 200 个市集单元，在这里，你可以邂逅带着阅读痕迹的典籍老书，也可以围坐聆听名家分享，和同好畅快聊书，在喧闹市井里寻得一份..."], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "小红书", "author": "南京吃喝玩乐", "publish_date": "2026-10-16", "key_points": ["南京情报库", "类型/南京活动", "来源/小红书", "在夫子庙的熙攘烟火中焕发新生.踏入市集,扑面而来旧书独有的... 带#金陵旧书市集#文枢古籍#文枢开讲 三个话题发布小红书笔记,...", "去年的旧书市集圈粉无数，收获书迷们满满好评，", "10月23日‑25日", "，金陵旧书市集再进夫子庙携书卷气如约而至。", "汇聚 70 余家省内外特色书商，联动旧书巷内20家本土书店，设置近 200 个市集单元，在这里，你可以邂逅带着阅读痕迹的典籍老书，也可以围坐聆听名家分享，和同好畅快聊书，在喧闹市井里寻得一份..."], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571879&ver=7039&signature=rg8*hE6dItw2WN6wC*OUjLs4YCWc8ALbD04kCmdniuKHM41DNfsmVYxP0nRG52mpQOqdtMzwmRGaj4o6J15mqLOyhwN8C0YTuT9YLfLf5cWSIPJlM*zlXy6Y053tISZS&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571879&ver=7039&signature=rg8*hE6dItw2WN6wC*OUjLs4YCWc8ALbD04kCmdniuKHM41DNfsmVYxP0nRG52mpQOqdtMzwmRGaj4o6J15mqLOyhwN8C0YTuT9YLfLf5cWSIPJlM*zlXy6Y053tISZS&new=1", "obsidian_path": "05_社媒情报库/南京活动/2026-10-16_人机battle、旧书盲盒...在夫子庙,逛到了最好玩的市集!.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E6%B4%BB%E5%8A%A8/2026-10-16_%E4%BA%BA%E6%9C%BAbattle%E3%80%81%E6%97%A7%E4%B9%A6%E7%9B%B2%E7%9B%92...%E5%9C%A8%E5%A4%AB%E5%AD%90%E5%BA%99%2C%E9%80%9B%E5%88%B0%E4%BA%86%E6%9C%80%E5%A5%BD%E7%8E%A9%E7%9A%84%E5%B8%82%E9%9B%86%21.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_e4b0c708103d", "post_id": "wx_e4b0c708103d", "title": "2026(南京)文房四宝艺术博览会薅羊毛打卡攻略!", "category": "南京展会", "sub_category": "艺术特展", "start_time": "2026-10-23T09:00:00+08:00", "end_time": "2026-10-23T20:00:00+08:00", "event_time": "10月23日", "event_time_text": "10月23日", "district": "玄武区", "address": "南京国际展览中心 / 玄武湖", "location": "南京国际展览中心 / 玄武湖", "lng": 118.813603, "lat": 32.077069, "geom": "POINT(118.813603 32.077069)", "benefit": "0元可抽奖3次", "is_free": true, "action_guide": "现场拍照带话题 #2026南京文房四宝博览会 发小红书笔记，至服务台领福利", "summary": "【南京国际展览中心 / 玄武湖】0元可抽奖3次（10月23日）— 小红书话题打卡(主办服务台)位置:E馆面向开幕式舞台左手边拍照发小红书笔记带“#20", "tags": ["免费/0元羊毛", "玄武区", "艺术特展", "微信公众号"], "extra_info": {"platform": "微信公众号", "author": "中国文房四宝协会", "publish_date": "2026-10-15", "key_points": ["南京情报库", "类型/南京展会", "来源/小红书", "10月23日(周五)至10月26日(周一)", "特别提醒：10月26日 14:00停止观众入场", "南京国际展览中心E", "如何到达南京国际展览中心（新庄 玄武湖畔）", "南京市龙蟠路88号（南京国际展览中心5号门）"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "中国文房四宝协会", "publish_date": "2026-10-15", "key_points": ["南京情报库", "类型/南京展会", "来源/小红书", "10月23日(周五)至10月26日(周一)", "特别提醒：10月26日 14:00停止观众入场", "南京国际展览中心E", "如何到达南京国际展览中心（新庄 玄武湖畔）", "南京市龙蟠路88号（南京国际展览中心5号门）"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571758&ver=7039&signature=WZJfXOcK1ozOr7do-Ap9NQ-kXWQPkSLlOQSBA2IoYIg4iqP8L4oFl30zvElmXIZqEJZSS6LBjEXv0QgbnU5fljfQr9Hc26jKCiEjXVHmrA2O5lLE5ijjwscblC9TG-bw&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571758&ver=7039&signature=WZJfXOcK1ozOr7do-Ap9NQ-kXWQPkSLlOQSBA2IoYIg4iqP8L4oFl30zvElmXIZqEJZSS6LBjEXv0QgbnU5fljfQr9Hc26jKCiEjXVHmrA2O5lLE5ijjwscblC9TG-bw&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-15_2026(南京)文房四宝艺术博览会薅羊毛打卡攻略!.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-15_2026%28%E5%8D%97%E4%BA%AC%29%E6%96%87%E6%88%BF%E5%9B%9B%E5%AE%9D%E8%89%BA%E6%9C%AF%E5%8D%9A%E8%A7%88%E4%BC%9A%E8%96%85%E7%BE%8A%E6%AF%9B%E6%89%93%E5%8D%A1%E6%94%BB%E7%95%A5%21.md", "status": "已完成", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_77ab536a4b13", "post_id": "wx_77ab536a4b13", "title": "免费!10月18日南京4大景区免票|长江矶石、古洞、文峰塔,秋日一次打卡", "category": "南京活动", "sub_category": "景区免票日", "start_time": "2026-10-18T09:00:00+08:00", "end_time": "2026-10-18T20:00:00+08:00", "event_time": "10月18日", "event_time_text": "10月18日", "district": "栖霞区", "address": "燕子矶公园 / 幕燕滨江", "location": "燕子矶公园 / 幕燕滨江", "lng": 118.790826, "lat": 32.125621, "geom": "POINT(118.790826 32.125621)", "benefit": "免费", "is_free": true, "action_guide": "免预约，直接前往现场打卡", "summary": "【燕子矶公园 / 幕燕滨江】免费（10月18日）— 南京一年一度的景区免费开放日,10月场次终于来啦.10月18日... 高淳慢城停车场", "tags": ["免费/0元羊毛", "栖霞区", "景区免票日", "微信公众号"], "extra_info": {"platform": "微信公众号", "author": "云切图", "publish_date": "2026-10-15", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "南京一年一度的景区免费开放日,10月场次终于来啦.10月18日... 高淳慢城停车场容量大,周末出行尽量早出发.周边吃喝联动幕燕...", "南京一年一度的景区免费开放日，10月场次终于来啦。", "10月18日，周日，同时也是重阳节，", "燕子矶公园、达摩古洞、长江观音景区、高淳国际慢城文峰塔，4个景区全天免大门票", "很多人看到免费就想一口气全部跑完。这里先说本地人的真心话：四个景点分两处，栖霞幕燕滨江片区三个挨在一起，高淳文峰塔在最南边，单程距离很远，不要试图一天两头来回跑。优先二选一，要么主攻幕燕滨江..."], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "云切图", "publish_date": "2026-10-15", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "南京一年一度的景区免费开放日,10月场次终于来啦.10月18日... 高淳慢城停车场容量大,周末出行尽量早出发.周边吃喝联动幕燕...", "南京一年一度的景区免费开放日，10月场次终于来啦。", "10月18日，周日，同时也是重阳节，", "燕子矶公园、达摩古洞、长江观音景区、高淳国际慢城文峰塔，4个景区全天免大门票", "很多人看到免费就想一口气全部跑完。这里先说本地人的真心话：四个景点分两处，栖霞幕燕滨江片区三个挨在一起，高淳文峰塔在最南边，单程距离很远，不要试图一天两头来回跑。优先二选一，要么主攻幕燕滨江..."], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571833&ver=7039&signature=0FirJm2p9uJEKOZ0yxbL8DIC4zZU8UB9nhNvSRVFrqoRXoVEPejSpQaqK-1bhfD9ZrdomF1nmPaeLYTVxSk*Lx9Jc2qOY28FKFFc7zUiLetSWGyG8V1-75NhoPH154Ow&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571833&ver=7039&signature=0FirJm2p9uJEKOZ0yxbL8DIC4zZU8UB9nhNvSRVFrqoRXoVEPejSpQaqK-1bhfD9ZrdomF1nmPaeLYTVxSk*Lx9Jc2qOY28FKFFc7zUiLetSWGyG8V1-75NhoPH154Ow&new=1", "obsidian_path": "05_社媒情报库/南京活动/2026-10-15_免费!10月18日南京4大景区免票_长江矶石、古洞、文峰塔,秋日一次打卡.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E6%B4%BB%E5%8A%A8/2026-10-15_%E5%85%8D%E8%B4%B9%2110%E6%9C%8818%E6%97%A5%E5%8D%97%E4%BA%AC4%E5%A4%A7%E6%99%AF%E5%8C%BA%E5%85%8D%E7%A5%A8_%E9%95%BF%E6%B1%9F%E7%9F%B6%E7%9F%B3%E3%80%81%E5%8F%A4%E6%B4%9E%E3%80%81%E6%96%87%E5%B3%B0%E5%A1%94%2C%E7%A7%8B%E6%97%A5%E4%B8%80%E6%AC%A1%E6%89%93%E5%8D%A1.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_4751840a2974", "post_id": "wx_4751840a2974", "title": "10月建行羊毛合集:6个立减金入口,最低的", "category": "羊毛福利", "sub_category": "银行/支付立减金", "start_time": "2026-10-14T09:00:00+08:00", "end_time": "2026-10-31T21:00:00+08:00", "event_time": "近期进行中", "event_time_text": "近期进行中", "district": "全城通用", "address": "微信立减金", "location": "微信立减金", "lng": 118.784013, "lat": 32.039783, "geom": "POINT(118.784013 32.039783)", "benefit": "限时立减/领券福利", "is_free": true, "action_guide": "直接前往或点击原文链接查看", "summary": "【微信立减金】限时立减/领券福利（近期进行中）— 元微信立减金提醒:上月达标的这个月别忘了抽;想冲下个月档期的,现在就可以开始攒消费额", "tags": ["免费/0元羊毛", "全城通用", "银行/支付立减金", "微信公众号", "微信立减金"], "extra_info": {"platform": "微信公众号", "author": "高能羊毛衫", "publish_date": "2026-10-14", "key_points": ["南京情报库", "类型/羊毛福利", "来源/微信公众号", "元微信立减金提醒:上月达标的这个月别忘了抽;想冲下个月档期的,现在就可以开始攒消费额.零钱通无损达标的老路子已经黄了,..."], "price_num": 0.0, "geocode_source": "nanjing_citywide_channel", "likes": 0}, "platform": "微信公众号", "author": "高能羊毛衫", "publish_date": "2026-10-14", "key_points": ["南京情报库", "类型/羊毛福利", "来源/微信公众号", "元微信立减金提醒:上月达标的这个月别忘了抽;想冲下个月档期的,现在就可以开始攒消费额.零钱通无损达标的老路子已经黄了,..."], "source_url": "https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS0GDPgwOQD2EKtQkadXo4zyowr4G9eTaPVqXa8Fplpd9CH9gCzuf7koRGTrH6d7Ob5Wp0Us8vP8Frc5SjTgAJQaRQ2HgX8vXKNZZ5Sz5sr4cB16r79xbOmLNL9nEpffFbhx5U685-U1vOj2daMDxgsdwJzhdS7JNj9W3E-U5kENJoUdUY4xr2v5eAPEPaw6p_dM7ubf0ZNHfhf_S_9SxC7LdrgozfSg6bw..&type=2&query=10%E6%9C%88 %E7%BE%8A%E6%AF%9B %E5%90%88%E9%9B%86 %E6%B6%88%E8%B4%B9%E5%88%B8 %E7%AB%8B%E5%87%8F%E9%87%91&token=5A38538F665AB20D2A2F777F8CC26B5A2AFD29DA6AD879BF&k=14&h=T", "url": "https://weixin.sogou.com/link?url=dn9a_-gY295K0Rci_xozVXfdMkSQTLW6cwJThYulHEtVjXrGTiVgS0GDPgwOQD2EKtQkadXo4zyowr4G9eTaPVqXa8Fplpd9CH9gCzuf7koRGTrH6d7Ob5Wp0Us8vP8Frc5SjTgAJQaRQ2HgX8vXKNZZ5Sz5sr4cB16r79xbOmLNL9nEpffFbhx5U685-U1vOj2daMDxgsdwJzhdS7JNj9W3E-U5kENJoUdUY4xr2v5eAPEPaw6p_dM7ubf0ZNHfhf_S_9SxC7LdrgozfSg6bw..&type=2&query=10%E6%9C%88 %E7%BE%8A%E6%AF%9B %E5%90%88%E9%9B%86 %E6%B6%88%E8%B4%B9%E5%88%B8 %E7%AB%8B%E5%87%8F%E9%87%91&token=5A38538F665AB20D2A2F777F8CC26B5A2AFD29DA6AD879BF&k=14&h=T", "obsidian_path": "05_社媒情报库/羊毛福利/2026-10-14_10月建行羊毛合集_6个立减金入口,最低的.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E7%BE%8A%E6%AF%9B%E7%A6%8F%E5%88%A9/2026-10-14_10%E6%9C%88%E5%BB%BA%E8%A1%8C%E7%BE%8A%E6%AF%9B%E5%90%88%E9%9B%86_6%E4%B8%AA%E7%AB%8B%E5%87%8F%E9%87%91%E5%85%A5%E5%8F%A3%2C%E6%9C%80%E4%BD%8E%E7%9A%84.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_d34b11ebd354", "post_id": "wx_d34b11ebd354", "title": "收藏!2026年10月15日-30日全国展会时间表(130+场优质展会)", "category": "南京展会", "sub_category": "大型博览会", "start_time": "2026-10-15T09:00:00+08:00", "end_time": "2026-10-15T20:00:00+08:00", "event_time": "2026年10月15日-30日", "event_time_text": "2026年10月15日-30日", "district": "建邺区", "address": "南京国际博览中心", "location": "南京国际博览中心", "lng": 118.727148, "lat": 31.999717, "geom": "POINT(118.727148 31.999717)", "benefit": "预登记免费领票", "is_free": true, "action_guide": "需提前在公众号/小程序预登记或报名入场", "summary": "【南京国际博览中心】预登记免费领票（2026年10月15日-30日）— 2026第43届江苏国际新能源电动车及零部件交易会2026.10.22-24...", "tags": ["免费/0元羊毛", "建邺区", "大型博览会", "微信公众号", "南京国际博览中心"], "extra_info": {"platform": "微信公众号", "author": "看展小贴士", "publish_date": "2026-10-13", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "2026第43届江苏国际新能源电动车及零部件交易会2026.10.22-24... (南京)国际塑料展览会2026.10.28-30南京国际博览中心IPIE...", "国庆之后，全国展会正式进入下半年最密集的旺季。仅在10月15日至30日这16天里，据公开排期不完全统计，全国就有近50场经贸类展会接力登场，本文整理了一份按日期排序的全国排期总表，方便企业排...", "10月15日-30日全国展会", "2026.10.15-17", "2026.10.15-19"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "看展小贴士", "publish_date": "2026-10-13", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "2026第43届江苏国际新能源电动车及零部件交易会2026.10.22-24... (南京)国际塑料展览会2026.10.28-30南京国际博览中心IPIE...", "国庆之后，全国展会正式进入下半年最密集的旺季。仅在10月15日至30日这16天里，据公开排期不完全统计，全国就有近50场经贸类展会接力登场，本文整理了一份按日期排序的全国排期总表，方便企业排...", "10月15日-30日全国展会", "2026.10.15-17", "2026.10.15-19"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571828&ver=7039&signature=a25MlcGVB1wJKGxaIWZPSwLmldXC9x-83DhCc*CEOqiJ*fQ56Uj5cRbBbdmXkg5bAna4hueA1oA5s-EaKyuQBKs5WEKdGMgTALKktLjmhj52AT5yMY8E0z8TlkXjs8ey&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571828&ver=7039&signature=a25MlcGVB1wJKGxaIWZPSwLmldXC9x-83DhCc*CEOqiJ*fQ56Uj5cRbBbdmXkg5bAna4hueA1oA5s-EaKyuQBKs5WEKdGMgTALKktLjmhj52AT5yMY8E0z8TlkXjs8ey&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-13_收藏!2026年10月15日-30日全国展会时间表(130+场优质展会).md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-13_%E6%94%B6%E8%97%8F%212026%E5%B9%B410%E6%9C%8815%E6%97%A5-30%E6%97%A5%E5%85%A8%E5%9B%BD%E5%B1%95%E4%BC%9A%E6%97%B6%E9%97%B4%E8%A1%A8%28130%2B%E5%9C%BA%E4%BC%98%E8%B4%A8%E5%B1%95%E4%BC%9A%29.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_56f253fb4639", "post_id": "wx_56f253fb4639", "title": "定了!南京湖熟菊花展10月17号开园,千亩花海铺满江宁,周末别窝家里了,带上家人去打卡!", "category": "南京活动", "sub_category": "市集游园", "start_time": "2026-10-17T09:00:00+08:00", "end_time": "2026-10-17T20:00:00+08:00", "event_time": "10月17日", "event_time_text": "10月17日", "district": "江宁区", "address": "夫子庙", "location": "夫子庙", "lng": 118.961103, "lat": 31.837076, "geom": "POINT(118.961103 31.837076)", "benefit": "免费", "is_free": true, "action_guide": "直接前往或点击原文链接查看", "summary": "【夫子庙】免费（10月17日）— 要说每年秋天南京人最惦记的事,湖熟菊花展绝对排得上号.第十四届,10月17号,正式开", "tags": ["免费/0元羊毛", "江宁区", "市集游园", "微信公众号", "夫子庙"], "extra_info": {"platform": "微信公众号", "author": "未来优可期", "publish_date": "2026-10-11", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "要说每年秋天南京人最惦记的事,湖熟菊花展绝对排得上号.第十四届,10月17号,正式开园.我翻了翻往年去拍的照片,好家伙,那...", "要说每年秋天南京人最惦记的事，湖熟菊花展绝对排得上号。第十四届，10月17号，正式开园。", "进了园子，第一眼就被那片花海震住了。不是一小片那种意思意思的，是真真正正上千亩，站田埂上往远处看，花一直铺到天边。这里头好多品种是南农的科研基地培育的，上千种菊花，有的像绣球，有的花瓣细长得...", "拾光花园那个室内展区，白色拱门配上一个大茶壶花艺装置，菊花从壶口\"倒\"下来，像瀑布一样，站旁边拍一张，朋友圈点赞少不了。花墙也是，五颜六色拼成方块，往那一站就是一张明信片。", "还有个田园农耕主题的展区，弄了几个老农的塑像蹲在菊丛里，看着特别有江南农家那股子味道，丰收的气息扑面而来。户外那个爱心拱门，傍晚夕阳打过来的时候最好看，粉橘色的天配上一地菊花，随便拍都出片。..."], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "未来优可期", "publish_date": "2026-10-11", "key_points": ["南京情报库", "类型/南京活动", "来源/微信公众号", "要说每年秋天南京人最惦记的事,湖熟菊花展绝对排得上号.第十四届,10月17号,正式开园.我翻了翻往年去拍的照片,好家伙,那...", "要说每年秋天南京人最惦记的事，湖熟菊花展绝对排得上号。第十四届，10月17号，正式开园。", "进了园子，第一眼就被那片花海震住了。不是一小片那种意思意思的，是真真正正上千亩，站田埂上往远处看，花一直铺到天边。这里头好多品种是南农的科研基地培育的，上千种菊花，有的像绣球，有的花瓣细长得...", "拾光花园那个室内展区，白色拱门配上一个大茶壶花艺装置，菊花从壶口\"倒\"下来，像瀑布一样，站旁边拍一张，朋友圈点赞少不了。花墙也是，五颜六色拼成方块，往那一站就是一张明信片。", "还有个田园农耕主题的展区，弄了几个老农的塑像蹲在菊丛里，看着特别有江南农家那股子味道，丰收的气息扑面而来。户外那个爱心拱门，傍晚夕阳打过来的时候最好看，粉橘色的天配上一地菊花，随便拍都出片。..."], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571877&ver=7039&signature=ytFfZ*SsH*hKkkFTwTRj7GOitVJ5FKkOY1jaEjmcRhHTSXydTl2JDwu7ElLb5QG16f8AcwvXFxuShcgcxtI*vZK6VayvPJ2y9F70jZhpXVBBB220NWJ0S22-TOK*Cz*a&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571877&ver=7039&signature=ytFfZ*SsH*hKkkFTwTRj7GOitVJ5FKkOY1jaEjmcRhHTSXydTl2JDwu7ElLb5QG16f8AcwvXFxuShcgcxtI*vZK6VayvPJ2y9F70jZhpXVBBB220NWJ0S22-TOK*Cz*a&new=1", "obsidian_path": "05_社媒情报库/南京活动/2026-10-11_定了!南京湖熟菊花展10月17号开园,千亩花海铺满江宁,周末别窝家里了,.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E6%B4%BB%E5%8A%A8/2026-10-11_%E5%AE%9A%E4%BA%86%21%E5%8D%97%E4%BA%AC%E6%B9%96%E7%86%9F%E8%8F%8A%E8%8A%B1%E5%B1%9510%E6%9C%8817%E5%8F%B7%E5%BC%80%E5%9B%AD%2C%E5%8D%83%E4%BA%A9%E8%8A%B1%E6%B5%B7%E9%93%BA%E6%BB%A1%E6%B1%9F%E5%AE%81%2C%E5%91%A8%E6%9C%AB%E5%88%AB%E7%AA%9D%E5%AE%B6%E9%87%8C%E4%BA%86%2C.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_1bb8674ef2fc", "post_id": "wx_1bb8674ef2fc", "title": "2026南京10月展会活动排期!其中115届糖酒会即将重磅启幕!", "category": "南京展会", "sub_category": "大型博览会", "start_time": "2026-10-09T09:00:00+08:00", "end_time": "2026-10-31T21:00:00+08:00", "event_time": "10/15-10/17", "event_time_text": "10/15-10/17", "district": "建邺区", "address": "南京国际博览中心 / 南京国际展览中心", "location": "南京国际博览中心 / 南京国际展览中心", "lng": 118.726302, "lat": 31.998928, "geom": "POINT(118.726302 31.998928)", "benefit": "免费领票", "is_free": true, "action_guide": "需提前在公众号/小程序预登记或报名入场", "summary": "【南京国际博览中心 / 南京国际展览中心】免费领票（10/15-10/17）— 01南京10月展会排期一览表10/15-10/17第115届全国糖酒商品交易会南京国", "tags": ["免费/0元羊毛", "建邺区", "大型博览会", "微信公众号"], "extra_info": {"platform": "微信公众号", "author": "51展会门票", "publish_date": "2026-10-09", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "01南京10月展会排期一览表10/15-10/17第115届全国糖酒商品交易会南京国际博览中心10/19-10/222026物理AI与世界模型大会南京国...", "南京10月展会排期一览表", "10/15-10/17", "南京国际博览中心", "10/19-10/22"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "51展会门票", "publish_date": "2026-10-09", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "01南京10月展会排期一览表10/15-10/17第115届全国糖酒商品交易会南京国际博览中心10/19-10/222026物理AI与世界模型大会南京国...", "南京10月展会排期一览表", "10/15-10/17", "南京国际博览中心", "10/19-10/22"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571825&ver=7039&signature=LxzdjEtDfAvnbJ*lO2YWF9*YVq6b9nUeQpcqdSxnapMbMGHaOigHr2yDHtpQ1odrftvOYEko85g5eX9uXEZexFp5CxOi64sumIxFiBXOlBAmBOtgQxo*xfYnz26oJ21Z&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571825&ver=7039&signature=LxzdjEtDfAvnbJ*lO2YWF9*YVq6b9nUeQpcqdSxnapMbMGHaOigHr2yDHtpQ1odrftvOYEko85g5eX9uXEZexFp5CxOi64sumIxFiBXOlBAmBOtgQxo*xfYnz26oJ21Z&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-09_2026南京10月展会活动排期!其中115届糖酒会即将重磅启幕!.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-09_2026%E5%8D%97%E4%BA%AC10%E6%9C%88%E5%B1%95%E4%BC%9A%E6%B4%BB%E5%8A%A8%E6%8E%92%E6%9C%9F%21%E5%85%B6%E4%B8%AD115%E5%B1%8A%E7%B3%96%E9%85%92%E4%BC%9A%E5%8D%B3%E5%B0%86%E9%87%8D%E7%A3%85%E5%90%AF%E5%B9%95%21.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_b05c2f95dc4b", "post_id": "wx_b05c2f95dc4b", "title": "2026年10月江苏展会排期表(完整版)", "category": "南京展会", "sub_category": "大型博览会", "start_time": "2026-10-13T09:00:00+08:00", "end_time": "2026-10-15T18:00:00+08:00", "event_time": "2026年10月13日—10月15日", "event_time_text": "2026年10月13日—10月15日", "district": "建邺区", "address": "南京国际博览中心 / 南京国际展览中心", "location": "南京国际博览中心 / 南京国际展览中心", "lng": 118.725478, "lat": 31.998469, "geom": "POINT(118.725478 31.998469)", "benefit": "预登记免费领票", "is_free": true, "action_guide": "直接前往或点击原文链接查看", "summary": "【南京国际博览中心 / 南京国际展览中心】预登记免费领票（2026年10月13日—10月15日）— 南京国际博览中心2026中国汽车工程学会年会时间:2026年10月..", "tags": ["免费/0元羊毛", "建邺区", "大型博览会", "微信公众号"], "extra_info": {"platform": "微信公众号", "author": "展达人会展网", "publish_date": "2026-10-09", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "南京国际博览中心2026中国汽车工程学会年会时间:2026年10月... 另因展会办展过程的不可控性,站内部分展会可能会出现题材变化...", "时间：2026年", "10月09日—10月20日", "10月09日—10月12日", "扬州国际展览中心"], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "展达人会展网", "publish_date": "2026-10-09", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "南京国际博览中心2026中国汽车工程学会年会时间:2026年10月... 另因展会办展过程的不可控性,站内部分展会可能会出现题材变化...", "时间：2026年", "10月09日—10月20日", "10月09日—10月12日", "扬州国际展览中心"], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571825&ver=7039&signature=FFzb6*0lVmImvQhqgCVY2e7yPkGFXEspSh**G2cmwe4E*FD8Pj2IlO5FSSqxKUmlOWrDVnAwmfTFjzLFHNpbF8zsa2yDDWz2v369Q7qvpWzgccgDfVgIEyithlMH*6ry&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571825&ver=7039&signature=FFzb6*0lVmImvQhqgCVY2e7yPkGFXEspSh**G2cmwe4E*FD8Pj2IlO5FSSqxKUmlOWrDVnAwmfTFjzLFHNpbF8zsa2yDDWz2v369Q7qvpWzgccgDfVgIEyithlMH*6ry&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-09_2026年10月江苏展会排期表(完整版).md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-09_2026%E5%B9%B410%E6%9C%88%E6%B1%9F%E8%8B%8F%E5%B1%95%E4%BC%9A%E6%8E%92%E6%9C%9F%E8%A1%A8%28%E5%AE%8C%E6%95%B4%E7%89%88%29.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}, {"id": "wx_d164747d9f7e", "post_id": "wx_d164747d9f7e", "title": "南京万象天地星星人农场系列主题展华东首展", "category": "南京展会", "sub_category": "艺术特展", "start_time": "2026-09-17T09:00:00+08:00", "end_time": "2026-11-01T18:00:00+08:00", "event_time": "2026年9月17日至11月1日", "event_time_text": "2026年9月17日至11月1日", "district": "秦淮区", "address": "南京万象天地", "location": "南京万象天地", "lng": 118.777698, "lat": 32.025434, "geom": "POINT(118.777698 32.025434)", "benefit": "预登记免费领票", "is_free": true, "action_guide": "直接前往或点击原文链接查看", "summary": "【南京万象天地】预登记免费领票（2026年9月17日至11月1日）— 南京万象天地迎来4周年庆,携手泡泡玛特,打造「LE4's ...星星人农场系列主题展", "tags": ["免费/0元羊毛", "秦淮区", "艺术特展", "微信公众号", "南京万象天地"], "extra_info": {"platform": "微信公众号", "author": "商业咔", "publish_date": "2026-10-09", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "南京万象天地迎来4周年庆,携手泡泡玛特,打造「LE4's ...星星人农场系列主题展华东首展,以超1000平米的沉浸式空间散落...", "南京万象天地迎来4周年庆，携手泡泡玛特，打造「LE4\\x26#39;s TWINKLE 意游四时」主题季，把云章公所和L1街区整个「包装」成星星人农场。\\x0a\\x0a勇敢甜心伫立星光农场、..."], "price_num": 0.0, "geocode_source": "nanjing_landmark_dict", "likes": 0}, "platform": "微信公众号", "author": "商业咔", "publish_date": "2026-10-09", "key_points": ["南京情报库", "类型/南京展会", "来源/微信公众号", "南京万象天地迎来4周年庆,携手泡泡玛特,打造「LE4's ...星星人农场系列主题展华东首展,以超1000平米的沉浸式空间散落...", "南京万象天地迎来4周年庆，携手泡泡玛特，打造「LE4\\x26#39;s TWINKLE 意游四时」主题季，把云章公所和L1街区整个「包装」成星星人农场。\\x0a\\x0a勇敢甜心伫立星光农场、..."], "source_url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571831&ver=7039&signature=h1*SteeM0eHLA508eu0LlRH*XbJhkIvExNzxq3i7OAiqouuLkt-wveNUrKyA6kfLM0E7B14xtEx8Rd-N-lV662KEriBSSapoqzL*AFsRzqOXhlrPAJv6kO7UI9SeV9Xi&new=1", "url": "https://mp.weixin.qq.com/s?src=11&timestamp=1792571831&ver=7039&signature=h1*SteeM0eHLA508eu0LlRH*XbJhkIvExNzxq3i7OAiqouuLkt-wveNUrKyA6kfLM0E7B14xtEx8Rd-N-lV662KEriBSSapoqzL*AFsRzqOXhlrPAJv6kO7UI9SeV9Xi&new=1", "obsidian_path": "05_社媒情报库/南京展会/2026-10-09_南京万象天地星星人农场系列主题展华东首展.md", "obsidian_uri": "obsidian://open?vault=IOT&file=05_%E7%A4%BE%E5%AA%92%E6%83%85%E6%8A%A5%E5%BA%93/%E5%8D%97%E4%BA%AC%E5%B1%95%E4%BC%9A/2026-10-09_%E5%8D%97%E4%BA%AC%E4%B8%87%E8%B1%A1%E5%A4%A9%E5%9C%B0%E6%98%9F%E6%98%9F%E4%BA%BA%E5%86%9C%E5%9C%BA%E7%B3%BB%E5%88%97%E4%B8%BB%E9%A2%98%E5%B1%95%E5%8D%8E%E4%B8%9C%E9%A6%96%E5%B1%95.md", "status": "待去/待薅", "updated_at": "2026-10-22 10:39:56"}];
+    const XINJIEKOU = [118.7842, 32.0418];
+
+    const DISTRICT_CENTERS = {
+      '玄武区': [118.7979, 32.0486],
+      '秦淮区': [118.7981, 32.0112],
+      '建邺区': [118.7327, 32.0045],
+      '鼓楼区': [118.7699, 32.0672],
+      '栖霞区': [118.8807, 32.0963],
+      '雨花台区': [118.7799, 31.9886],
+      '江宁区': [118.8399, 31.9526],
+      '浦口区': [118.6280, 32.0588],
+      '六合区': [118.8413, 32.3426],
+      '溧水区': [119.0287, 31.6531],
+      '高淳区': [118.9926, 31.3271]
+    };
+
+    const COVER_MAP = {
+      'wx_fd0cb00e9b69': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80',
+      'wx_d164747d9f7e': 'https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80',
+      'wx_e4b0c708103d': 'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=600&auto=format&fit=crop&q=80',
+      'wx_1bb8674ef2fc': 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80',
+      'wx_f6842d9b3baa': 'https://images.unsplash.com/photo-1511578314322-379afb476865?w=600&auto=format&fit=crop&q=80',
+      'wx_d34b11ebd354': 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=600&auto=format&fit=crop&q=80',
+      'wx_b05c2f95dc4b': 'https://images.unsplash.com/photo-1531243269054-5ebf6f34081e?w=600&auto=format&fit=crop&q=80',
+      'xhs_79a2d4ef64ea': 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=600&auto=format&fit=crop&q=80',
+      'wx_56f253fb4639': 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=600&auto=format&fit=crop&q=80',
+      'wx_77ab536a4b13': 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80',
+      'wx_33b3d2e52c0c': 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&auto=format&fit=crop&q=80',
+      'wx_0e91fefd7f2a': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+      'wx_5e855d59f61b': 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=600&auto=format&fit=crop&q=80',
+      'wx_3131ff6067bc': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop&q=80',
+      'wx_4751840a2974': 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600&auto=format&fit=crop&q=80'
+    };
+
+    createApp({
+      setup() {
+        const events = ref([]);
+        const activeCategory = ref('ALL');
+        const selectedDistrict = ref('ALL');
+        const radiusFilter = ref(0);
+        const freeOnly = ref(false);
+        const searchQuery = ref('');
+        const activeEventId = ref(null);
+        const drawerOpen = ref(true);
+        const isSyncing = ref(false);
+        const showFilterPopover = ref(false);
+        const showRings = ref(false);
+        const mapStyleMode = ref('standard');
+
+        const mapModes = [
+          { id: 'standard', label: '高德全彩', color: '#007AFF' },
+          { id: 'satellite', label: '高清卫星', color: '#10B981' },
+          { id: 'apple', label: '苹果浅灰', color: '#64748B' },
+          { id: 'dark', label: '午夜深色', color: '#0F172A' }
+        ];
+
+        let leafletMap = null;
+        let baseTileLayer = null;
+        let satelliteOverlayLayer = null;
+        let leafletMarkersGroup = null;
+        let ringsGroup = null;
+
+        const districts = [
+          '玄武区', '秦淮区', '建邺区', '鼓楼区', '栖霞区',
+          '雨花台区', '江宁区', '浦口区', '六合区', '溧水区', '高淳区'
+        ];
+
+        function cleanString(str) {
+          if (!str) return '';
+          return String(str).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '').trim();
+        }
+
+        function haversineDistance(lng1, lat1, lng2, lat2) {
+          const toRad = (d) => (d * Math.PI) / 180;
+          const R = 6371.0;
+          const dLat = toRad(lat2 - lat1);
+          const dLng = toRad(lng2 - lng1);
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+          return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function normalize(item) {
+          const lng = Number(item.lng || 118.7842);
+          const lat = Number(item.lat || 32.0418);
+          const dist = item.distance_km != null 
+            ? Number(item.distance_km) 
+            : haversineDistance(XINJIEKOU[0], XINJIEKOU[1], lng, lat);
+          
+          const obsPath = item.obsidian_path || '';
+          const obsUri = obsPath ? `obsidian://open?vault=IOT&file=${encodeURIComponent(obsPath)}` : '#';
+
+          return {
+            ...item,
+            id: item.id || item.post_id,
+            title: cleanString(item.title),
+            category: cleanString(item.category || '南京活动'),
+            district: cleanString(item.district || '玄武区'),
+            address: cleanString(item.address || item.location || '南京市内'),
+            benefit: cleanString(item.benefit || '免费入场'),
+            event_time_text: cleanString(item.event_time_text || item.event_time || item.publish_date || '近期有效'),
+            status: cleanString(item.status || '待去/待薅'),
+            obsidian_uri: obsUri,
+            lng,
+            lat,
+            distance_km: Number(dist.toFixed(1))
+          };
+        }
+
+        function getEventCover(item) {
+          if (COVER_MAP[item.id]) return COVER_MAP[item.id];
+          if (item.category === '南京展会') return 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=600&auto=format&fit=crop&q=80';
+          if (item.category === '羊毛福利') return 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop&q=80';
+          return 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80';
+        }
+
+        const categoryOptions = [
+          { value: 'ALL', label: '全部' },
+          { value: '南京展会', label: '展会' },
+          { value: '南京活动', label: '活动' },
+          { value: '羊毛福利', label: '福利' }
+        ];
+
+        const hasActiveFilter = computed(() => {
+          return selectedDistrict.value !== 'ALL' || radiusFilter.value > 0 || freeOnly.value;
+        });
+
+        function resetFilters() {
+          selectedDistrict.value = 'ALL';
+          radiusFilter.value = 0;
+          freeOnly.value = false;
+        }
+
+        function getAmapNaviUrl(item) {
+          return `https://uri.amap.com/marker?position=${item.lng},${item.lat}&name=${encodeURIComponent(item.title)}&coordinate=gaode`;
+        }
+
+        const filteredEvents = computed(() => {
+          return events.value.filter(it => {
+            if (activeCategory.value !== 'ALL' && it.category !== activeCategory.value) return false;
+            if (selectedDistrict.value !== 'ALL' && it.district !== selectedDistrict.value) return false;
+            if (freeOnly.value && !it.is_free) return false;
+            if (radiusFilter.value > 0 && it.distance_km > radiusFilter.value) return false;
+            if (searchQuery.value) {
+              const q = searchQuery.value.toLowerCase();
+              const hay = [it.title, it.category, it.district, it.address, it.benefit].join(' ').toLowerCase();
+              if (!hay.includes(q)) return false;
+            }
+            return true;
+          }).sort((a, b) => a.distance_km - b.distance_km);
+        });
+
+        function getMarkerDotColor(category) {
+          if (category === '南京展会') return '#FF9500';
+          if (category === '羊毛福利') return '#34C759';
+          return '#007AFF';
+        }
+
+        function getStatusClass(status) {
+          if (status === '已完成') return 'bg-emerald-50 text-emerald-800 border border-emerald-200/50';
+          if (status === '已过期') return 'bg-rose-50 text-rose-800 border border-rose-200/50';
+          return 'bg-slate-100 text-slate-700 border border-black/[0.04]';
+        }
+
+        function getStatusDotClass(status) {
+          if (status === '已完成') return 'bg-[#34C759]';
+          if (status === '已过期') return 'bg-[#FF3B30]';
+          return 'bg-slate-400';
+        }
+
+        function initMap() {
+          const container = document.getElementById('leaflet-map');
+          if (!container || leafletMap) return;
+
+          leafletMap = L.map('leaflet-map', {
+            center: [XINJIEKOU[1], XINJIEKOU[0]],
+            zoom: 12,
+            zoomControl: false,
+            attributionControl: false
+          });
+
+          applyMapLayer();
+
+          leafletMarkersGroup = L.layerGroup().addTo(leafletMap);
+          ringsGroup = L.layerGroup().addTo(leafletMap);
+
+          syncMarkers();
+        }
+
+        function setMapMode(modeId) {
+          mapStyleMode.value = modeId;
+          applyMapLayer();
+        }
+
+        function applyMapLayer() {
+          if (!leafletMap) return;
+
+          if (baseTileLayer) leafletMap.removeLayer(baseTileLayer);
+          if (satelliteOverlayLayer) leafletMap.removeLayer(satelliteOverlayLayer);
+
+          if (mapStyleMode.value === 'satellite') {
+            baseTileLayer = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
+              subdomains: ['1', '2', '3', '4'],
+              maxZoom: 18,
+              minZoom: 8
+            }).addTo(leafletMap);
+
+            satelliteOverlayLayer = L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+              subdomains: ['1', '2', '3', '4'],
+              maxZoom: 18,
+              minZoom: 8
+            }).addTo(leafletMap);
+          } else {
+            baseTileLayer = L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+              subdomains: ['1', '2', '3', '4'],
+              maxZoom: 18,
+              minZoom: 9
+            }).addTo(leafletMap);
+          }
+        }
+
+        function toggleRings() {
+          showRings.value = !showRings.value;
+          if (!ringsGroup) return;
+          ringsGroup.clearLayers();
+
+          if (showRings.value) {
+            const center = [XINJIEKOU[1], XINJIEKOU[0]];
+            L.circle(center, {
+              radius: 3000,
+              color: '#007AFF',
+              weight: 1.5,
+              dashArray: '4 4',
+              fillOpacity: 0.04
+            }).bindTooltip("3km 核心商圈", { permanent: false, direction: 'top' }).addTo(ringsGroup);
+
+            L.circle(center, {
+              radius: 5000,
+              color: '#10B981',
+              weight: 1.5,
+              dashArray: '6 6',
+              fillOpacity: 0.03
+            }).bindTooltip("5km 主城圈", { permanent: false, direction: 'top' }).addTo(ringsGroup);
+
+            L.circle(center, {
+              radius: 10000,
+              color: '#F59E0B',
+              weight: 1.5,
+              dashArray: '8 8',
+              fillOpacity: 0.02
+            }).bindTooltip("10km 绕城圈", { permanent: false, direction: 'top' }).addTo(ringsGroup);
+          }
+        }
+
+        function recenterMap() {
+          if (leafletMap) {
+            leafletMap.flyTo([XINJIEKOU[1], XINJIEKOU[0]], 12, {
+              duration: 0.8,
+              easeLinearity: 0.25
+            });
+          }
+        }
+
+        function onDistrictChange() {
+          if (selectedDistrict.value in DISTRICT_CENTERS && leafletMap) {
+            const center = DISTRICT_CENTERS[selectedDistrict.value];
+            leafletMap.flyTo([center[1], center[0]], 13, {
+              duration: 0.9,
+              easeLinearity: 0.25
+            });
+          }
+        }
+
+        function syncMarkers() {
+          if (!leafletMap || !leafletMarkersGroup) return;
+          leafletMarkersGroup.clearLayers();
+
+          filteredEvents.value.forEach(item => {
+            const dotColor = getMarkerDotColor(item.category);
+            const label = item.is_free ? '免费' : (item.benefit ? item.benefit.slice(0, 4) : '活动');
+            const isActive = activeEventId.value === item.id;
+
+            const iconHtml = `
+              <div class="apple-marker ${isActive ? 'active' : ''}" id="leaf-marker-${item.id}">
+                <div class="marker-pill inline-flex items-center gap-1.5 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] border border-black/[0.06] hover:scale-110 transition-all duration-200 font-semibold text-xs text-slate-800 whitespace-nowrap cursor-pointer">
+                  <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${dotColor}"></span>
+                  <span class="shrink-0">${label}</span>
+                </div>
+              </div>
+            `;
+
+            const customIcon = L.divIcon({
+              html: iconHtml,
+              className: 'bg-transparent border-0',
+              iconSize: [0, 0],
+              iconAnchor: [0, 0]
+            });
+
+            const marker = L.marker([item.lat, item.lng], { icon: customIcon });
+
+            marker.bindPopup(`
+              <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-width: 180px; padding: 2px;">
+                <div style="font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 4px; line-height: 1.3;">${item.title}</div>
+                <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">${item.address} · ${item.distance_km} km</div>
+                <div style="display: flex; gap: 6px;">
+                  <a href="${getAmapNaviUrl(item)}" target="_blank" style="flex: 1; text-align: center; background: #007AFF; color: #fff; padding: 4px 8px; border-radius: 8px; font-size: 11px; text-decoration: none; font-weight: 500;">高德导航 ↗</a>
+                </div>
+              </div>
+            `, {
+              closeButton: false,
+              offset: [0, -18]
+            });
+
+            marker.on('click', () => {
+              activeEventId.value = item.id;
+              scrollToCard(item.id);
+            });
+
+            marker.addTo(leafletMarkersGroup);
+          });
+        }
+
+        function focusEvent(item) {
+          activeEventId.value = item.id;
+          if (leafletMap) {
+            leafletMap.flyTo([item.lat, item.lng], 15, {
+              duration: 0.8,
+              easeLinearity: 0.25
+            });
+          }
+          syncMarkers();
+        }
+
+        function scrollToCard(itemId) {
+          const el = document.getElementById('card-' + itemId);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }
+
+        async function cycleStatus(item) {
+          const order = ['待去/待薅', '已完成', '已过期'];
+          const curIdx = order.indexOf(item.status);
+          const nextStatus = order[(curIdx + 1) % order.length];
+          item.status = nextStatus;
+
+          try {
+            await fetch(`/api/events/${item.id}/status`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: nextStatus })
+            });
+          } catch (e) {}
+        }
+
+        async function triggerSync() {
+          if (isSyncing.value) return;
+          isSyncing.value = true;
+          try {
+            const res = await fetch('/api/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mode: 'incremental' })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data.items) && data.items.length) {
+                events.value = data.items.map(normalize);
+                syncMarkers();
+              }
+            }
+          } catch (e) {}
+          isSyncing.value = false;
+        }
+
+        async function loadData() {
+          try {
+            const res = await fetch('/api/events');
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data.items) && data.items.length) {
+                events.value = data.items.map(normalize);
+                nextTick(() => { syncMarkers(); });
+                return;
+              }
+            }
+          } catch (e) {}
+          events.value = INITIAL_EVENTS.map(normalize);
+          nextTick(() => { syncMarkers(); });
+        }
+
+        watch(filteredEvents, () => {
+          syncMarkers();
+        });
+
+        onMounted(() => {
+          loadData();
+          nextTick(() => {
+            initMap();
+          });
+        });
+
+        return {
+          events,
+          filteredEvents,
+          categoryOptions,
+          activeCategory,
+          districts,
+          selectedDistrict,
+          radiusFilter,
+          freeOnly,
+          hasActiveFilter,
+          searchQuery,
+          activeEventId,
+          drawerOpen,
+          isSyncing,
+          showFilterPopover,
+          showRings,
+          mapStyleMode,
+          mapModes,
+          getMarkerDotColor,
+          getStatusClass,
+          getStatusDotClass,
+          getAmapNaviUrl,
+          getEventCover,
+          focusEvent,
+          cycleStatus,
+          triggerSync,
+          resetFilters,
+          setMapMode,
+          toggleRings,
+          recenterMap,
+          onDistrictChange
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

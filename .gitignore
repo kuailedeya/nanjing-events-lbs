@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Environment & credentials
+.env
+**/.env
+*.env.*
+!.env.example
+
+# Python cache & logs
+__pycache__/
+**/*/__pycache__/
+*.py[cod]
+*$py.class
+*.log
+logs/
+**/logs/
+
+# Databases & local journals & docker volumes
+*.db-journal
+*.sqlite3-journal
+analytics.duckdb
+ai-intel-postgres/data/
+ai-intel-postgres/archive/
+
+# Playwright / test artifacts
+.playwright-mcp/
+screenshot_apple_active_event.png
+screenshot_apple_marker_perfect.png
+screenshot_apple_satellite.png
+screenshot_apple_whitesmoke.png
+screenshot_apple_exhibitions.png
+screenshot_apple_dashboard.png
+
+# Agent & local temp
+.gemini/
+.taste-skill/
