@@ -44,60 +44,90 @@ NANJING_DISTRICTS: Dict[str, Tuple[float, float]] = {
 NANJING_LANDMARKS: List[Tuple[str, str, float, float]] = [
     ("南京国际博览中心", "建邺区", 118.7265, 31.9986),
     ("河西国博", "建邺区", 118.7265, 31.9986),
+    ("国博", "建邺区", 118.7265, 31.9986),
     ("元通", "建邺区", 118.7235, 31.9952),
     ("江苏大剧院", "建邺区", 118.7128, 32.0112),
     ("保利大剧院", "建邺区", 118.7042, 31.9921),
+    ("保利大剧", "建邺区", 118.7042, 31.9921),
     ("奥体中心", "建邺区", 118.7248, 32.0082),
     ("金鹰世界", "建邺区", 118.7385, 32.0258),
     ("河西金鹰", "建邺区", 118.7385, 32.0258),
+    ("华采天地", "建邺区", 118.7235, 31.9952),
+    ("河西华采", "建邺区", 118.7235, 31.9952),
+    ("南京眼", "建邺区", 118.6852, 31.9895),
+    ("青奥村", "建邺区", 118.6925, 31.9882),
     ("金陵图书馆", "建邺区", 118.7165, 32.0053),
     ("鱼嘴湿地", "建邺区", 118.6632, 31.9715),
     ("南京国际展览中心", "玄武区", 118.8136, 32.0754),
     ("新庄国展中心", "玄武区", 118.8136, 32.0754),
+    ("新庄国展", "玄武区", 118.8136, 32.0754),
     ("新庄", "玄武区", 118.8136, 32.0754),
     ("玄武湖", "玄武区", 118.7977, 32.0725),
     ("莲花广场", "玄武区", 118.8035, 32.0748),
     ("情侣园", "玄武区", 118.8162, 32.0721),
+    ("太阳宫", "玄武区", 118.8125, 32.0682),
+    ("金陵STYLE", "玄武区", 118.8125, 32.0682),
+    ("白马公园", "玄武区", 118.8172, 32.0578),
+    ("鸡鸣寺", "玄武区", 118.7986, 32.0601),
     ("红山森林动物园", "玄武区", 118.8024, 32.0942),
     ("玄武红山新城", "玄武区", 118.8110, 32.0965),
     ("南京博物院", "玄武区", 118.8245, 32.0402),
+    ("南博", "玄武区", 118.8245, 32.0402),
     ("江苏省美术馆", "玄武区", 118.7958, 32.0451),
+    ("省美术馆", "玄武区", 118.7958, 32.0451),
+    ("省美", "玄武区", 118.7958, 32.0451),
     ("六朝博物馆", "玄武区", 118.7982, 32.0439),
     ("古生物博物馆", "玄武区", 118.7946, 32.0602),
     ("钟山风景区", "玄武区", 118.8482, 32.0586),
     ("中山陵", "玄武区", 118.8542, 32.0628),
     ("德基广场", "玄武区", 118.7848, 32.0435),
+    ("德基", "玄武区", 118.7848, 32.0435),
     ("1912街区", "玄武区", 118.7972, 32.0448),
+    ("1912", "玄武区", 118.7972, 32.0448),
     ("南京万象天地", "秦淮区", 118.7785, 32.0236),
     ("万象天地", "秦淮区", 118.7785, 32.0236),
     ("夫子庙", "秦淮区", 118.7892, 32.0205),
     ("老门东", "秦淮区", 118.7868, 32.0126),
     ("熙南里", "秦淮区", 118.7802, 32.0248),
+    ("水游城", "秦淮区", 118.7885, 32.0258),
+    ("水平方", "秦淮区", 118.7892, 32.0252),
+    ("茂业天地", "秦淮区", 118.7882, 32.0232),
+    ("中华门", "秦淮区", 118.7805, 32.0125),
     ("秦淮河", "秦淮区", 118.7912, 32.0195),
     ("大报恩寺", "秦淮区", 118.7836, 32.0092),
     ("新街口", "秦淮区", 118.7841, 32.0415),
     ("南京艺术学院", "鼓楼区", 118.7524, 32.0652),
+    ("南艺", "鼓楼区", 118.7524, 32.0652),
     ("颐和路", "鼓楼区", 118.7658, 32.0631),
     ("阅江楼", "鼓楼区", 118.7426, 32.0945),
     ("清凉山", "鼓楼区", 118.7582, 32.0496),
     ("古林公园", "鼓楼区", 118.7538, 32.0672),
+    ("紫峰大厦", "鼓楼区", 118.7788, 32.0592),
+    ("鼓楼广场", "鼓楼区", 118.7792, 32.0595),
+    ("金陵饭店", "鼓楼区", 118.7825, 32.0435),
     ("幕燕滨江", "栖霞区", 118.7915, 32.1268),
     ("燕子矶", "栖霞区", 118.8152, 32.1426),
     ("栖霞山", "栖霞区", 118.9625, 32.1592),
     ("仙林大学城", "栖霞区", 118.9182, 32.1086),
+    ("仙林金鹰", "栖霞区", 118.9285, 32.1052),
+    ("羊山公园", "栖霞区", 118.9325, 32.1082),
     ("万达茂", "栖霞区", 118.9586, 32.1165),
     ("江宁湖熟", "江宁区", 118.9624, 31.8365),
     ("湖熟菊花展", "江宁区", 118.9624, 31.8365),
     ("湖熟", "江宁区", 118.9624, 31.8365),
     ("百家湖", "江宁区", 118.8216, 31.9338),
     ("景枫中心", "江宁区", 118.8205, 31.9352),
+    ("景枫", "江宁区", 118.8205, 31.9352),
     ("牛首山", "江宁区", 118.7458, 31.9162),
     ("园博园", "江宁区", 119.0352, 32.0548),
+    ("汤山温泉", "江宁区", 119.0485, 32.0582),
+    ("汤山", "江宁区", 119.0485, 32.0582),
     ("雨花客厅", "雨花台区", 118.7615, 31.9812),
     ("南京南站", "雨花台区", 118.7968, 31.9692),
     ("雨花台", "雨花台区", 118.7789, 31.9985),
     ("扬子江国际会议中心", "浦口区", 118.6912, 32.0885),
     ("江北图书馆", "浦口区", 118.6854, 32.0932),
+    ("弘阳广场", "浦口区", 118.7235, 32.1385),
     ("老山", "浦口区", 118.6025, 32.0816),
     ("珍珠泉", "浦口区", 118.6624, 32.1285),
     ("金牛湖", "六合区", 118.9582, 32.4685),
@@ -268,7 +298,33 @@ def haversine_km(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
     return round(2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a)), 2)
 
 
+def bounding_box_deg(lat: float, lng: float, radius_km: float) -> Tuple[float, float, float, float]:
+    """计算中心点经纬度在给定半径 (公里) 下的包围盒 (min_lat, max_lat, min_lng, max_lng)"""
+    dlat = radius_km / 111.0
+    rad_lat = math.radians(lat)
+    cos_lat = math.cos(rad_lat)
+    if cos_lat < 0.001:
+        cos_lat = 0.001
+    dlng = radius_km / (111.0 * cos_lat)
+    return round(lat - dlat, 6), round(lat + dlat, 6), round(lng - dlng, 6), round(lng + dlng, 6)
+
+
+def get_db_connection(db_path: Path = SQLITE_PATH) -> sqlite3.Connection:
+    """获取优化配置后的 SQLite 连接（WAL 模式 + 内存临时表 + 5s 忙锁等待）"""
+    conn = sqlite3.connect(db_path, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA cache_size = -64000;")
+    conn.execute("PRAGMA temp_store = MEMORY;")
+    return conn
+
+
 def ensure_nj_events_table(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS nj_events (
@@ -297,6 +353,13 @@ def ensure_nj_events_table(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    # 创建 6 大时空与核心查询索引
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nj_events_district ON nj_events(district);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nj_events_category ON nj_events(category);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nj_events_status ON nj_events(status);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nj_events_coords ON nj_events(lat, lng);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nj_events_updated ON nj_events(updated_at DESC);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_nj_events_is_free ON nj_events(is_free);")
     conn.commit()
 
 
@@ -305,8 +368,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
     将 nanjing_deals_events 与 Obsidian 笔记全量同步升级至 nj_events 表，
     同时把 district / lng / lat / sub_category / tags 写回每篇 Obsidian .md 的 YAML 属性。
     """
-    conn = sqlite3.connect(SQLITE_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection(SQLITE_PATH)
     ensure_nj_events_table(conn)
     conn.execute("DELETE FROM nj_events")
 
