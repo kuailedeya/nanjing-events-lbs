@@ -333,6 +333,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 content = html_file.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Content-Length", str(len(content)))
                 self.end_headers()
                 self.wfile.write(content)
@@ -360,6 +361,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     mime = "image/x-icon"
                 self.send_response(200)
                 self.send_header("Content-Type", mime)
+                self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Content-Length", str(len(content)))
                 self.end_headers()
                 self.wfile.write(content)
@@ -443,10 +445,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "Unknown endpoint"}, 404)
 
 
+def get_local_ips() -> List[str]:
+    import socket
+    ips = []
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if not ip.startswith("127."):
+                ips.append(ip)
+    except Exception:
+        pass
+    return ips
+
+
 def main() -> None:
     port = 8765
-    server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
-    print(f"Nanjing LBS Visualization Server listening on http://127.0.0.1:{port}", flush=True)
+    server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
+    lan_ips = get_local_ips()
+    print("=" * 60, flush=True)
+    print(f"  Nanjing LBS Server Started (0.0.0.0:{port})", flush=True)
+    print(f"  - Local URL:   http://127.0.0.1:{port}", flush=True)
+    for ip in lan_ips:
+        print(f"  - LAN URL:     http://{ip}:{port}", flush=True)
+    print("  - CORS Status: Fully Enabled (*, GET, POST, OPTIONS, PUT, DELETE)", flush=True)
+    print("=" * 60, flush=True)
     server.serve_forever()
 
 
