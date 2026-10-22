@@ -422,6 +422,11 @@ class EventCacheManager:
 EVENT_CACHE = EventCacheManager(ttl=15.0)
 
 
+def get_all_events() -> List[Dict[str, Any]]:
+    """便捷外部调用方法：获取全量事件列表"""
+    return EVENT_CACHE.get_all()
+
+
 # ==============================================================================
 # 4. 异步任务管理器 (Background Sync & Scraping Manager)
 # ==============================================================================
@@ -1061,6 +1066,8 @@ def filter_events(items: List[Dict[str, Any]], query_params: Dict[str, List[str]
         out.sort(key=lambda x: x.get("updated_at", ""), reverse=(order == "desc"))
     elif sort_by == "title":
         out.sort(key=lambda x: x.get("title", ""), reverse=(order == "desc"))
+    elif order in ("desc", "reverse", "逆序"):
+        out.reverse()
 
     return out
 

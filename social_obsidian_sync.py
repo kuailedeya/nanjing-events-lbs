@@ -881,17 +881,26 @@ def main() -> None:
     scraper = NanjingDealScraper()
     db = ObsidianSummaryDB(vault_dir=Path(args.vault))
 
-    default_plan: List[Tuple[str, str]] = [
-        ("🎪 南京展会", "2026 南京 10月 展会 排期 博览中心"),
-        ("🎪 南京展会", "2026 南京 电动车展 塑料展 电商交易会 10月"),
-        ("🎪 南京展会", "南京 万象天地 星星人 首展 免费"),
-        ("🎉 南京活动", "南京 本周末 免费活动 10.17 10.18"),
-        ("🎉 南京活动", "南京 10月 免费开放日 景区 免票 周末"),
-        ("🎉 南京活动", "南京 湖熟菊花展 夫子庙 市集 10月"),
-        ("🐑 羊毛福利", "2026 南京 文房四宝 博览会 薅羊毛 小红书"),
-        ("🐑 羊毛福利", "10月 羊毛 合集 消费券 立减金"),
-        ("🐑 羊毛福利", "小红书 羊毛 免费 10月 立减金"),
-    ]
+    # 1. 优先注入/维护南京全域 11 行政区基准精选情报集 (52+ 条)
+    try:
+        from nanjing_seeds import NANJING_COMPREHENSIVE_SEEDS, COMPREHENSIVE_QUERY_PLAN
+        print(f"[*] 正在核验并维护南京全域基准情报库 ({len(NANJING_COMPREHENSIVE_SEEDS)} 条)...")
+        for seed in NANJING_COMPREHENSIVE_SEEDS:
+            db.save_record(seed)
+        default_plan = list(COMPREHENSIVE_QUERY_PLAN)
+    except Exception as e:
+        print(f"[!] 基准情报集加载提示: {e}")
+        default_plan: List[Tuple[str, str]] = [
+            ("🎪 南京展会", "2026 南京 10月 展会 排期 博览中心"),
+            ("🎪 南京展会", "2026 南京 电动车展 塑料展 电商交易会 10月"),
+            ("🎪 南京展会", "南京 万象天地 星星人 首展 免费"),
+            ("🎉 南京活动", "南京 本周末 免费活动 10.17 10.18"),
+            ("🎉 南京活动", "南京 10月 免费开放日 景区 免票 周末"),
+            ("🎉 南京活动", "南京 湖熟菊花展 夫子庙 市集 10月"),
+            ("🐑 羊毛福利", "2026 南京 文房四宝 博览会 薅羊毛 小红书"),
+            ("🐑 羊毛福利", "10月 羊毛 合集 消费券 立减金"),
+            ("🐑 羊毛福利", "小红书 羊毛 免费 10月 立减金"),
+        ]
     if args.keyword:
         default_plan.insert(0, ("🎉 南京活动", args.keyword))
 

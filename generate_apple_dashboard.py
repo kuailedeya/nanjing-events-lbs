@@ -408,6 +408,17 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <span>视野联动</span>
               </button>
 
+              <!-- 苹果风“逆序/正序”微开关 -->
+              <button
+                @click="isReverseOrder = !isReverseOrder"
+                class="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-all cursor-pointer"
+                :class="isReverseOrder ? 'bg-sky-50 text-sky-800 border border-sky-200/60 shadow-2xs' : 'bg-black/[0.04] text-slate-500 hover:text-slate-700'"
+                title="切换正序/逆序排列"
+              >
+                <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="isReverseOrder ? 'bg-[#007AFF]' : 'bg-slate-300'"></span>
+                <span>{{ isReverseOrder ? '逆序' : '正序' }}</span>
+              </button>
+
               <span v-if="showFavoritesOnly" class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">待去清单</span>
             </div>
 
@@ -898,6 +909,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         const showStatsModal = ref(false);
         const mapStyleMode = ref('standard');
         const activeZoneLabel = ref('全城');
+        const isReverseOrder = ref(true);
 
         const favoriteIds = ref(JSON.parse(localStorage.getItem('nanjing_favorites') || '[]'));
 
@@ -1142,10 +1154,16 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
           }
 
+          let result = [];
           if (showFavoritesOnly.value) {
-            return uniqueList.sort((a, b) => getDaysRemainingScore(a) - getDaysRemainingScore(b));
+            result = uniqueList.sort((a, b) => getDaysRemainingScore(a) - getDaysRemainingScore(b));
+          } else {
+            result = uniqueList.sort((a, b) => a.distance_km - b.distance_km);
           }
-          return uniqueList.sort((a, b) => a.distance_km - b.distance_km);
+          if (isReverseOrder.value) {
+            result.reverse();
+          }
+          return result;
         });
 
         const timeStats = computed(() => {
@@ -1555,6 +1573,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           copyAddress,
           copiedAddress,
           toggleBoundsFilter,
+          isReverseOrder,
           hasActiveFilter,
           searchQuery,
           activeEventId,
