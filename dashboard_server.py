@@ -526,7 +526,60 @@ SYNC_MANAGER = SyncTaskManager()
 
 
 # ==============================================================================
-# 5. 原子化 Obsidian 与 SQLite 更新引擎 (Atomic Status Updater)
+# 5. 内置每日 12:00 定时抓取调度器 (Daily 12:00 Scheduler)
+# ==============================================================================
+class DailyScheduler(threading.Thread):
+    """
+    内置每日定时抓取调度器：
+    每天 12:00:00 自动触发全量社媒活动爬取、LBS空间库同步与缓存预热
+    """
+
+    def __init__(self, target_hour: int = 12, target_minute: int = 0):
+        super().__init__(daemon=True, name="DailySchedulerThread")
+        self.target_hour = target_hour
+        self.target_minute = target_minute
+        self.last_run_time: Optional[str] = None
+        self.next_run_dt: datetime.datetime = self._calc_next_run()
+
+    def _calc_next_run(self) -> datetime.datetime:
+        now = datetime.datetime.now()
+        target = now.replace(
+            hour=self.target_hour, minute=self.target_minute, second=0, microsecond=0
+        )
+        if target <= now:
+            target += datetime.timedelta(days=1)
+        return target
+
+    def get_info(self) -> Dict[str, Any]:
+        now = datetime.datetime.now()
+        sec_left = max(0, int((self.next_run_dt - now).total_seconds()))
+        return {
+            "enabled": True,
+            "cron_time": f"{self.target_hour:02d}:{self.target_minute:02d}",
+            "next_run": self.next_run_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "last_run": self.last_run_time,
+            "seconds_until_next_run": sec_left,
+        }
+
+    def run(self) -> None:
+        while True:
+            now = datetime.datetime.now()
+            if now >= self.next_run_dt:
+                self.last_run_time = now.strftime("%Y-%m-%d %H:%M:%S")
+                print(
+                    f"[{self.last_run_time}] [DailyScheduler] 触发每日 {self.target_hour:02d}:{self.target_minute:02d} 定时抓取与同步...",
+                    flush=True,
+                )
+                SYNC_MANAGER.submit_job(mode="full", limit=3)
+                self.next_run_dt = self._calc_next_run()
+            time.sleep(20)
+
+
+DAILY_SCHEDULER = DailyScheduler(target_hour=12, target_minute=0)
+
+
+# ==============================================================================
+# 6. 原子化 Obsidian 与 SQLite 更新引擎 (Atomic Status Updater)
 # ==============================================================================
 def update_item_status(post_id: str, new_status: str) -> Tuple[bool, str]:
     """更新活动状态，原子化重写 Obsidian Markdown YAML 并主动失效缓存"""
@@ -1113,6 +1166,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "cache": EVENT_CACHE.get_info(),
                     "metrics": METRICS.snapshot(),
                     "sync_worker": SYNC_MANAGER.get_status(),
+                    "daily_scheduler": DAILY_SCHEDULER.get_info(),
                     "lan_ips": get_local_ips(),
                 }
             )
@@ -1157,10 +1211,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         # ----------------------------------------------------------------------
-        # 4. 异步任务状态轮询 (GET /api/sync/status)
+        # 4. 异步任务与定时调度状态轮询 (GET /api/sync/status)
         # ----------------------------------------------------------------------
         if parsed.path == "/api/sync/status":
-            self._send_json({"ok": True, "task": SYNC_MANAGER.get_status()})
+            self._send_json(
+                {
+                    "ok": True,
+                    "task": SYNC_MANAGER.get_status(),
+                    "scheduler": DAILY_SCHEDULER.get_info(),
+                }
+            )
             return
 
         # ----------------------------------------------------------------------
@@ -1391,12 +1451,16 @@ def main() -> None:
     port = 8765
     server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
     lan_ips = get_local_ips()
+    # 启动每日 12:00 抓取调度器后台线程
+    DAILY_SCHEDULER.start()
+
     print("=" * 64, flush=True)
     print(f"  Nanjing LBS Platform Backend ({SERVER_VERSION})", flush=True)
     print(f"  - Bind Address:  0.0.0.0:{port}", flush=True)
     print(f"  - Local URL:     http://127.0.0.1:{port}", flush=True)
     for ip in lan_ips:
         print(f"  - LAN URL:       http://{ip}:{port}", flush=True)
+    print(f"  - Daily Schedule: Every day at 12:00:00 (Next: {DAILY_SCHEDULER.next_run_dt.strftime('%Y-%m-%d %H:%M:%S')})", flush=True)
     print("  - Lifecycle:     start_date / end_date / days_left / time_status Auto-Filter", flush=True)
     print("  - Deduplication: Smart Venue & Time Clustering -> extra_sources", flush=True)
     print(f"  - Apple iCal:    http://127.0.0.1:{port}/api/events/calendar.ics", flush=True)
