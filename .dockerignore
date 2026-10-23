@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+.gemini/
+.playwright-mcp/
+.taste-skill/
+frontend/node_modules/
+frontend/src/
+*.png
+*.jpg
+scratch/
+test_*.py

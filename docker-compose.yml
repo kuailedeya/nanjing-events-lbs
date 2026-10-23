@@ -1,0 +1,24 @@
+services:
+  nanjing-events:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nanjing-events-lbs:latest
+    container_name: nanjing_events_lbs
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      - PORT=8765
+      - TZ=Asia/Shanghai
+    volumes:
+      # 持久化挂载 SQLite 数据库
+      - ./data:/app/data
+      # 可选：挂载本地 Obsidian 笔记目录实现双向同步
+      # - /path/to/your/obsidian/vault:/app/vault
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8765/api/health')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
