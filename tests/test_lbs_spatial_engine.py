@@ -76,3 +76,78 @@ def test_jiangbei_district_clustering():
     )
     assert "江北新区" in tags
     assert "免票直入" in tags
+
+
+def test_multiple_events_sharing_same_source_url(tmp_path):
+    """验证同一篇公众号文章报道的多项独立活动不会互相覆盖或秒删"""
+    db_path = tmp_path / "multi_url_test.db"
+    conn = nanjing_lbs_engine.get_db_connection(db_path)
+    nanjing_lbs_engine.ensure_nj_events_table(conn)
+
+    shared_url = "https://mp.weixin.qq.com/s/sample_roundup_article"
+    # 模拟同一推文内的两条不同活动
+    conn.execute(
+        """
+        INSERT INTO nanjing_deals_events
+        (post_id, category, title, event_time, location, benefit, action_guide, summary, platform, author, publish_date, likes, status, url, obsidian_path)
+        VALUES
+        ('item_ev1', '🎪 南京展会', '南京国际新能源汽车展', '2026年11月1日', '南京国博', '免费', '预约', '车展', '微信公众号', '南京发布', '2026-10-01', 10, '待去/待薅', ?, ''),
+        ('item_ev2', '🎉 南京活动', '南京非遗国潮市集', '2026年11月2日', '夫子庙', '免费', '免票', '市集', '微信公众号', '南京发布', '2026-10-01', 20, '待去/待薅', ?, '')
+        """,
+        (shared_url, shared_url),
+    )
+    conn.commit()
+
+    # 临时覆盖 SQLITE_PATH 进行测试同步
+    orig_path = nanjing_lbs_engine.SQLITE_PATH
+    try:
+        nanjing_lbs_engine.SQLITE_PATH = db_path
+        items = nanjing_lbs_engine.migrate_and_sync_all()
+        # 两条活动必须全部保留，不能有一方被删除
+        saved_rows = conn.execute("SELECT id, title, source_url FROM nj_events").fetchall()
+        assert len(saved_rows) == 2
+        saved_ids = {r[0] for r in saved_rows}
+        assert "item_ev1" in saved_ids
+        assert "item_ev2" in saved_ids
+    finally:
+        nanjing_lbs_engine.SQLITE_PATH = orig_path
+        conn.close()
+
+
+def test_sync_preserves_user_manual_status(tmp_path):
+    """验证同步引擎绝对不覆盖用户手工修改的活动状态（如已打卡/已体验）"""
+    db_path = tmp_path / "status_preservation_test.db"
+    conn = nanjing_lbs_engine.get_db_connection(db_path)
+    nanjing_lbs_engine.ensure_nj_events_table(conn)
+
+    # 1. 插入一条原始活动并在 nj_events 中标记为已打卡
+    conn.execute(
+        """
+        INSERT INTO nanjing_deals_events
+        (post_id, category, title, event_time, location, benefit, action_guide, summary, platform, author, publish_date, likes, status, url, obsidian_path)
+        VALUES
+        ('item_checked', '🎉 南京活动', '玄武湖菊花展打卡', '2026年10月', '玄武湖', '免费', '直达', '菊花展', '小红书', '博主', '2026-10-01', 5, '待去/待薅', 'https://xhs.com/菊花', '')
+        """
+    )
+    conn.commit()
+
+    orig_path = nanjing_lbs_engine.SQLITE_PATH
+    try:
+        nanjing_lbs_engine.SQLITE_PATH = db_path
+        # 初次同步
+        nanjing_lbs_engine.migrate_and_sync_all()
+
+        # 用户通过前端操作将状态更新为“已打卡/已体验”
+        conn.execute("UPDATE nj_events SET status = '已打卡/已体验' WHERE id = 'item_checked'")
+        conn.commit()
+
+        # 模拟后台定时同步或全量刷新
+        nanjing_lbs_engine.migrate_and_sync_all()
+
+        # 查验状态是否依然完好保留
+        row = conn.execute("SELECT status FROM nj_events WHERE id = 'item_checked'").fetchone()
+        assert row[0] == "已打卡/已体验", f"User status was overwritten! Got {row[0]}"
+    finally:
+        nanjing_lbs_engine.SQLITE_PATH = orig_path
+        conn.close()
+

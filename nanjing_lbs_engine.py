@@ -696,10 +696,11 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                     pass
             continue
 
-        if obsidian_path in seen_paths or title in seen_titles:
+        if (obsidian_path and obsidian_path in seen_paths) or title in seen_titles:
             conn.execute("DELETE FROM nanjing_deals_events WHERE post_id = ?", (post_id,))
             continue
-        seen_paths.add(obsidian_path)
+        if obsidian_path:
+            seen_paths.add(obsidian_path)
         seen_titles.add(title)
         category = d["category"]
         event_time_text = d.get("event_time") or "近期同城"
@@ -776,6 +777,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
             except Exception:
                 pass
 
+        vault_name = VAULT_DIR.name or "IOT"
         raw_candidates.append(
             {
                 "id": post_id,
@@ -808,7 +810,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                 "source_url": source_url,
                 "url": source_url,
                 "obsidian_path": obsidian_path,
-                "obsidian_uri": f"obsidian://open?vault=IOT&file={urllib.parse.quote(obsidian_path)}",
+                "obsidian_uri": f"obsidian://open?vault={urllib.parse.quote(vault_name)}&file={urllib.parse.quote(obsidian_path)}" if obsidian_path else "",
                 "status": status,
                 "extra_sources": [],
                 "updated_at": now_str,
@@ -850,8 +852,21 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
     # 安全事务写入 SQLite nj_events (基于 Upsert，杜绝数据清空断档)
     with conn:
         for it in deduped_items:
-            # 先行清理同 ID 或同 URL 的历史记录，彻底规避双唯一约束冲突
-            conn.execute("DELETE FROM nj_events WHERE id = ? OR source_url = ?", (it["id"], it["source_url"]))
+            # 查验既有状态，杜绝覆盖用户已手工打卡/标记的状态
+            existing_st = conn.execute("SELECT status FROM nj_events WHERE id = ?", (it["id"],)).fetchone()
+            if not existing_st:
+                existing_st = conn.execute("SELECT status FROM nanjing_deals_events WHERE post_id = ?", (it["id"],)).fetchone()
+            safe_status = existing_st[0] if (existing_st and existing_st[0]) else (it.get("status") or "待去/待薅")
+
+            # 仅按 ID 清理，严禁按 source_url 清理（防止同一推文报道的多项独立活动相互覆盖秒删）
+            conn.execute("DELETE FROM nj_events WHERE id = ?", (it["id"],))
+
+            # 针对同一外部文章链接可能包含多项独立活动的情况，消除 source_url 唯一键冲突
+            target_url = it["source_url"]
+            existing_url = conn.execute("SELECT id FROM nj_events WHERE source_url = ? AND id != ?", (target_url, it["id"])).fetchone()
+            if existing_url:
+                target_url = f"{target_url}#{it['id']}"
+
             conn.execute(
                 """
                 INSERT INTO nj_events (
@@ -859,7 +874,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                     event_time_text, district, address, lng, lat, geom, benefit, is_free, action_guide,
                     summary, tags, extra_info, source_url, obsidian_path, status, extra_sources, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source_url) DO UPDATE SET
+                ON CONFLICT(id) DO UPDATE SET
                     title=excluded.title,
                     category=excluded.category,
                     sub_category=excluded.sub_category,
@@ -879,6 +894,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                     summary=excluded.summary,
                     tags=excluded.tags,
                     extra_info=excluded.extra_info,
+                    source_url=excluded.source_url,
                     obsidian_path=excluded.obsidian_path,
                     status=excluded.status,
                     extra_sources=excluded.extra_sources,
@@ -905,11 +921,11 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                     it["summary"],
                     json.dumps(it["tags"], ensure_ascii=False),
                     json.dumps(it["extra_info"], ensure_ascii=False),
-                    it["source_url"],
+                    target_url,
                     it["obsidian_path"],
-                    it["status"],
+                    safe_status,
                     json.dumps(it["extra_sources"], ensure_ascii=False),
-                    now_str,
+                    it["updated_at"],
                 ),
             )
 

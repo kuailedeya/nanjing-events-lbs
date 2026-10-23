@@ -39,6 +39,12 @@ COPY local.db ./data/local.db
 COPY local.db .
 COPY frontend/dist ./frontend/dist
 
+# 创建低权限非 root 运行用户并授权
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
 # 暴露服务端口
 EXPOSE 8765
 

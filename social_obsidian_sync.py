@@ -677,12 +677,31 @@ class ObsidianSummaryDB:
         conn.execute("PRAGMA busy_timeout = 5000;")
         try:
             with conn:
+                existing_st = conn.execute(
+                    "SELECT status FROM nanjing_deals_events WHERE post_id = ?", (rec["post_id"],)
+                ).fetchone()
+                safe_status = existing_st[0] if (existing_st and existing_st[0]) else "待去/待薅"
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO nanjing_deals_events
+                    INSERT INTO nanjing_deals_events
                     (post_id, category, title, event_time, location, benefit, action_guide,
                      summary, platform, author, publish_date, likes, status, url, obsidian_path)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(post_id) DO UPDATE SET
+                        category=excluded.category,
+                        title=excluded.title,
+                        event_time=excluded.event_time,
+                        location=excluded.location,
+                        benefit=excluded.benefit,
+                        action_guide=excluded.action_guide,
+                        summary=excluded.summary,
+                        platform=excluded.platform,
+                        author=excluded.author,
+                        publish_date=excluded.publish_date,
+                        likes=excluded.likes,
+                        status=excluded.status,
+                        url=excluded.url,
+                        obsidian_path=excluded.obsidian_path
                     """,
                     (
                         rec["post_id"],
@@ -697,7 +716,7 @@ class ObsidianSummaryDB:
                         rec["author"],
                         rec["publish_date"],
                         int(rec.get("likes", 0)),
-                        "待去/待薅",
+                        safe_status,
                         rec["url"],
                         rel_path,
                     ),
@@ -820,8 +839,9 @@ views:
         vault_accessible = self.vault_dir.exists()
         rows = []
         for r in all_rows:
+            obs_p = r["obsidian_path"] or ""
             # 只有当 Vault 目录存在且文件确实存在时正常关联；若脱机或文件未落盘，安全保留记录，绝不盲目删库
-            if not vault_accessible or (self.vault_dir / r["obsidian_path"]).exists():
+            if not vault_accessible or not obs_p or (self.vault_dir / obs_p).exists():
                 rows.append(r)
 
         expos = [r for r in rows if r["category"] == "🎪 南京展会"]
@@ -837,9 +857,11 @@ views:
                 "| :--- | :---: | :---: | :---: | :--- | :---: | :---: |",
             ]
             for r in items:
+                obs_p = r["obsidian_path"] or ""
+                link_target = obs_p[:-3] if obs_p.endswith(".md") else obs_p
                 short_t = r["title"].replace("|", "｜")[:28]
                 lines.append(
-                    f"| [[{r['obsidian_path'][:-3]}\\|{short_t}]] | **{r['event_time']}** | `{r['location']}` | **{r['benefit']}** | {r['action_guide'][:36]} | {r['platform']} | [直达]({r['url']}) |"
+                    f"| [[{link_target}\\|{short_t}]] | **{r['event_time']}** | `{r['location']}` | **{r['benefit']}** | {(r['action_guide'] or '')[:36]} | {r['platform']} | [直达]({r['url']}) |"
                 )
             return "\n".join(lines)
 
@@ -913,10 +935,11 @@ def main() -> None:
     parser.add_argument("--keyword", "-k", type=str, default="", help="附加自定义搜索词（默认自动扫描南京展会+南京活动+羊毛三大主题）")
     parser.add_argument("--limit", "-n", type=int, default=3, help="每个主题抓取条数")
     parser.add_argument("--vault", type=str, default=str(DEFAULT_VAULT_DIR), help="Obsidian 仓库路径")
+    parser.add_argument("--db-path", type=str, default=str(DEFAULT_SQLITE_PATH), help="SQLite 数据库文件路径")
     args = parser.parse_args()
 
     scraper = NanjingDealScraper()
-    db = ObsidianSummaryDB(vault_dir=Path(args.vault))
+    db = ObsidianSummaryDB(vault_dir=Path(args.vault), sqlite_path=Path(args.db_path))
 
     # 1. 优先注入/维护南京全域 11 行政区基准精选情报集 (52+ 条)
     try:
@@ -927,7 +950,7 @@ def main() -> None:
         default_plan = list(COMPREHENSIVE_QUERY_PLAN)
     except Exception as e:
         print(f"[!] 基准情报集加载提示: {e}")
-        _cur_dt = datetime.now()
+        _cur_dt = datetime.datetime.now()
         _y = _cur_dt.year
         _m = _cur_dt.month
         default_plan: List[Tuple[str, str]] = [

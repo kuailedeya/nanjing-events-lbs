@@ -927,6 +927,7 @@ import {
   Calendar, Clock, MapPin, Navigation, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
   Layers, Flame, BarChart3, Crosshair, ExternalLink, Copy, Check, FileText, Disc, Compass
 } from 'lucide-vue-next';
+import { resolveEventCover } from './utils/covers.js';
 
 // 城市中心常量 (南京新街口原点)
 const XINJIEKOU = [118.7969, 32.0436]; // [lng, lat]
@@ -1064,16 +1065,7 @@ function getMarkerDotColor(category) {
 }
 
 function getEventCover(item) {
-  if (item.cover_url) return item.cover_url;
-  const hash = Math.abs(String(item.id).split('').reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0));
-  const pics = [
-    'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80',
-    'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=600&q=80',
-    'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80',
-    'https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=600&q=80',
-    'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&w=600&q=80'
-  ];
-  return pics[hash % pics.length];
+  return resolveEventCover(item);
 }
 
 function getStatusInfo(item) {

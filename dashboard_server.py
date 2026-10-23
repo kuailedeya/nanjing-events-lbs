@@ -254,7 +254,7 @@ def compute_stats(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         lifecycle_counts[ts] = lifecycle_counts.get(ts, 0) + 1
 
         btxt = it.get("benefit") or ""
-        if any(k in btxt for k in ["免费", "免票"]):
+        if it.get("is_free") or any(k in btxt for k in ["免费", "免票"]):
             free_count += 1
         elif any(k in btxt for k in ["立减", "消费券", "0元", "0.01", "羊毛", "打卡", "礼"]):
             coupon_count += 1
@@ -994,6 +994,8 @@ def generate_ical_feed(events: List[Dict[str, Any]]) -> str:
         fb_s, fb_e = get_fallback_dates()
         s_date_raw = (ev.get("start_date") or fb_s)[:10].replace("-", "")
         e_date_raw = (ev.get("end_date") or fb_e)[:10].replace("-", "")
+        if e_date_raw < s_date_raw:
+            e_date_raw = s_date_raw
         dtstart = f"{s_date_raw}T090000"
         dtend = f"{e_date_raw}T180000"
 
@@ -1327,7 +1329,7 @@ def query_events_from_db(query_params: Dict[str, List[str]]) -> List[Dict[str, A
             "source_url": d.get("source_url") or "",
             "url": d.get("source_url") or "",
             "obsidian_path": obs_path,
-            "obsidian_uri": f"obsidian://open?vault=IOT&file={quote(obs_path)}",
+            "obsidian_uri": f"obsidian://open?vault={quote(VAULT_DIR.name or 'IOT')}&file={quote(obs_path)}" if obs_path else "",
             "status": clean_text(d.get("status") or "待去/待薅"),
             "extra_sources": extra_sources,
             "updated_at": d.get("updated_at") or "",
@@ -1574,7 +1576,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._send_json({"ok": False, "error": "Private or loopback IP not permitted"}, 403)
                     return
             except ValueError:
-                pass
+                # 针对域名执行 DNS 解析检查，拦截指向内网 IP 的 DNS 重绑定攻击
+                try:
+                    resolved_infos = socket.getaddrinfo(target_host, None)
+                    for _, _, _, _, sockaddr in resolved_infos:
+                        ip_cand = ipaddress.ip_address(sockaddr[0])
+                        if ip_cand.is_private or ip_cand.is_loopback or ip_cand.is_link_local or ip_cand.is_reserved:
+                            self._send_json({"ok": False, "error": f"Target host resolves to restricted IP ({sockaddr[0]})"}, 403)
+                            return
+                except Exception:
+                    pass
 
             try:
                 headers = {
@@ -1776,9 +1787,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             all_items_count = len(EVENT_CACHE.get_all())
 
             page_s = (qparams.get("page") or [""])[0]
-            if page_s.isdigit() and int(page_s) >= 1:
-                page = int(page_s)
-                page_size, _ = safe_int((qparams.get("page_size") or ["20"])[0], 20, "page_size")
+            if page_s:
+                page, err_p = safe_int(page_s, 1, "page")
+                page_size, err_ps = safe_int((qparams.get("page_size") or ["20"])[0], 20, "page_size")
+                if err_p or page < 1:
+                    self._send_json({"ok": False, "error": err_p or "参数 'page' 必须为大于等于 1 的正整数"}, 400)
+                    return
+                if err_ps or page_size < 1:
+                    self._send_json({"ok": False, "error": err_ps or "参数 'page_size' 必须为大于等于 1 的正整数"}, 400)
+                    return
                 page_size = max(1, min(page_size, 100))
                 total_count = len(filtered)
                 total_pages = math.ceil(total_count / page_size) if total_count > 0 else 1

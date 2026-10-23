@@ -101,6 +101,9 @@ def test_parameter_tampering_returns_400(api_client):
         "/api/events/nearby?lat=invalid_string&lng=118.7969&radius=5",
         "/api/events/nearby?lat=32.0436&lng=NaN&radius=5",
         "/api/events/nearby?lat=32.0436&lng=118.7969&radius=abc",
+        "/api/events?page=abc",
+        "/api/events?page=-1",
+        "/api/events?page=1&page_size=invalid",
     ]
     for u in tampered_urls:
         status, _, _ = api_client.get(u)
