@@ -215,23 +215,27 @@ ORDER BY promotion_score DESC, score DESC, published_at DESC NULLS LAST;
 
 def load_env() -> dict:
     env = {}
-    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        env[k.strip()] = v.strip()
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            env[k.strip()] = v.strip()
+    for k in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_HOST", "POSTGRES_PORT"):
+        if k in os.environ:
+            env[k] = os.environ[k]
     return env
 
 
 def connect():
     env = load_env()
     return psycopg2.connect(
-        host="127.0.0.1",
+        host=env.get("POSTGRES_HOST", "127.0.0.1"),
         port=int(env.get("POSTGRES_PORT", "5433")),
         dbname=env.get("POSTGRES_DB", "ai_intel"),
         user=env.get("POSTGRES_USER", "ai_intel"),
-        password=env["POSTGRES_PASSWORD"],
+        password=env.get("POSTGRES_PASSWORD", ""),
         connect_timeout=10,
     )
 

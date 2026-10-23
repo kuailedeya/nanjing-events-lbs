@@ -17,6 +17,7 @@ Dev.to 的“测评/对比/省钱教程”默认不提升，避免污染 Obsidia
 import argparse
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from psycopg2.extras import RealDictCursor
 
 from daily_wool_job import connect
 
-VAULT_WOOL_DIR = Path(r"E:\Note storage\IOT\AI 羊毛与编程动态\数据\羊毛")
+VAULT_WOOL_DIR = Path(os.environ.get("VAULT_DIR", r"E:\Note storage\IOT")) / "AI 羊毛与编程动态" / "数据" / "羊毛"
 
 WOOL_TYPES = ("免费额度", "学生优惠", "限时免费", "免费云资源", "折扣", "活动", "免费课程", "免费工具")
 TRUSTED_GITHUB_SOURCES = {

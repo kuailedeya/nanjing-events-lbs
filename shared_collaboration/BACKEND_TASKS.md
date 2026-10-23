@@ -32,5 +32,7 @@
 
 ## 2. 后端待办任务 (Pending Backend Tasks for Backend Agent)
 - [x] 在 `dashboard_server.py` 中增加 `extract_short_title` 并在事件对象中返回 `short_title` 字段。
-- [ ] 确保 SQLite 增量同步时自动清洗脏数据（去除重复活动、矫正火星坐标偏移至具体商圈）。
-- [ ] 确保 `/api/events` 在数据无变更时返回 `304 Not Modified` 或支持 ETag 缓存加速。
+- [x] 确保 SQLite 增量同步时自动清洗脏数据（去除重复活动、矫正火星坐标偏移至具体商圈，过滤超出南京行政边界的离群脏坐标）。
+- [x] 确保 `/api/events` 支持 ETag 与 `If-None-Match`，在数据未变更时返回 `304 Not Modified`，并携带 `Cache-Control: public, max-age=60` 提升前台二次加载速度。
+- [x] 为爬取的跨源活动海报增加轻量级防盗链图片代理（`GET /api/proxy/image?url=...` 防 SSRF 与防盗链白名单），防止小红书/微信公众号外链触发 403 碎图。
+- [x] 补充对“江北新区”行政区划与商圈标签的聚类识别与自动打标。

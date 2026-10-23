@@ -128,7 +128,14 @@ NANJING_LANDMARKS: List[Tuple[str, str, float, float]] = [
     ("雨花台", "雨花台区", 118.7789, 31.9985),
     ("扬子江国际会议中心", "浦口区", 118.6912, 32.0885),
     ("江北图书馆", "浦口区", 118.6854, 32.0932),
+    ("江北市民中心", "浦口区", 118.6872, 32.0915),
+    ("江北地下城", "浦口区", 118.6854, 32.0932),
+    ("研创园", "浦口区", 118.6352, 32.0258),
+    ("南京北站", "浦口区", 118.6821, 32.1654),
     ("弘阳广场", "浦口区", 118.7235, 32.1385),
+    ("桥北万象汇", "浦口区", 118.7215, 32.1412),
+    ("江北万象汇", "浦口区", 118.7215, 32.1412),
+    ("江北虹悦城", "浦口区", 118.6725, 32.0682),
     ("老山", "浦口区", 118.6025, 32.0816),
     ("珍珠泉", "浦口区", 118.6624, 32.1285),
     ("金牛湖", "六合区", 118.9582, 32.4685),
@@ -164,6 +171,11 @@ def _deterministic_jitter(seed_str: str) -> Tuple[float, float]:
     return round(dx, 6), round(dy, 6)
 
 
+def is_in_nanjing_bounds(lng: float, lat: float) -> bool:
+    """南京行政区域及主客商圈合法坐标边界: 经度 118.2 ~ 119.4, 纬度 31.2 ~ 32.7"""
+    return 118.2 <= lng <= 119.4 and 31.2 <= lat <= 32.7
+
+
 _AMAP_GEOCODE_CACHE: Dict[str, Tuple[str, float, float, str]] = {}
 
 
@@ -192,12 +204,14 @@ def geocode_nanjing(
                     loc_str = g.get("location", "")
                     if "," in loc_str:
                         lng_s, lat_s = loc_str.split(",")
-                        dist = g.get("district") or "玄武区"
-                        if isinstance(dist, list):
-                            dist = "玄武区"
-                        res = (dist, round(float(lng_s), 6), round(float(lat_s), 6), "amap_api")
-                        _AMAP_GEOCODE_CACHE[cache_key] = res
-                        return res
+                        lng_val, lat_val = float(lng_s), float(lat_s)
+                        if is_in_nanjing_bounds(lng_val, lat_val):
+                            dist = g.get("district") or "玄武区"
+                            if isinstance(dist, list):
+                                dist = "玄武区"
+                            res = (dist, round(lng_val, 6), round(lat_val, 6), "amap_api")
+                            _AMAP_GEOCODE_CACHE[cache_key] = res
+                            return res
         except Exception:
             pass
 
@@ -461,7 +475,13 @@ def extract_price_and_free(benefit: str, title: str, summary: str) -> Tuple[bool
 
 
 def build_tags(
-    category: str, sub_category: str, district: str, is_free: bool, platform: str, address: str
+    category: str,
+    sub_category: str,
+    district: str,
+    is_free: bool,
+    platform: str,
+    address: str,
+    title: str = "",
 ) -> List[str]:
     tags = []
     if is_free:
@@ -472,6 +492,11 @@ def build_tags(
     short_loc = (address or "").split("（")[0].split("(")[0].split("·")[0].strip()
     if short_loc and short_loc not in tags and len(short_loc) <= 10:
         tags.append(short_loc)
+    # 江北新区核心商圈与国家级新区自动聚类识别
+    full_str = f"{address} {title}"
+    if any(k in full_str for k in ["江北", "江北新区", "浦口", "研创园", "弘阳广场", "桥北", "南京北站", "扬子江"]):
+        if "江北新区" not in tags:
+            tags.append("江北新区")
     return tags
 
 
@@ -636,10 +661,16 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                 pass
 
         district, lng, lat, geo_src = geocode_nanjing(address, title, summary, post_id)
+        if not is_in_nanjing_bounds(lng, lat):
+            base_lng, base_lat = NANJING_DISTRICTS.get(district, NANJING_DISTRICTS["玄武区"])
+            dx, dy = _deterministic_jitter(post_id or title)
+            lng, lat = round(base_lng + dx, 6), round(base_lat + dy, 6)
+            geo_src = f"{geo_src}_bounded"
+
         sub_cat = infer_sub_category(category, title, benefit, summary)
         start_date, end_date, start_iso, end_iso = parse_lifecycle_dates(event_time_text, publish_date)
         is_free, price_num = extract_price_and_free(benefit, title, summary)
-        tags_list = build_tags(category, sub_cat, district, is_free, platform, address)
+        tags_list = build_tags(category, sub_cat, district, is_free, platform, address, title)
         geom_wkt = f"POINT({lng} {lat})"
 
         extra_obj = {
@@ -749,6 +780,8 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
     # 安全事务写入 SQLite nj_events (基于 Upsert，杜绝数据清空断档)
     with conn:
         for it in deduped_items:
+            # 先行清理同 ID 或同 URL 的历史记录，彻底规避双唯一约束冲突
+            conn.execute("DELETE FROM nj_events WHERE id = ? OR source_url = ?", (it["id"], it["source_url"]))
             conn.execute(
                 """
                 INSERT INTO nj_events (

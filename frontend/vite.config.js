@@ -14,6 +14,21 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/echarts') || id.includes('node_modules/zrender')) {
+            return 'echarts-vendor';
+          }
+          if (id.includes('node_modules/leaflet')) {
+            return 'leaflet-vendor';
+          }
+          if (id.includes('node_modules/lucide-vue-next')) {
+            return 'lucide-vendor';
+          }
+        }
+      }
+    }
   }
 })

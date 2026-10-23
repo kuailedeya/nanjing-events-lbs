@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 import dashboard_server
 
-OUT_HTML = Path(r"E:\usage\dashboard.html")
+OUT_HTML = Path(__file__).resolve().parent / "dashboard.html"
 
 items = dashboard_server.get_all_events()
 fallback_json = json.dumps(items, ensure_ascii=False)

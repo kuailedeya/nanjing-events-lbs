@@ -9,8 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@arco-design/web-vue": "^2.56.3",
-    "@vuemap/vue-amap": "^2.1.9",
     "echarts": "^6.1.0",
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",

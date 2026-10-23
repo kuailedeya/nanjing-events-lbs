@@ -2,7 +2,9 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, r"E:\usage")
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 import social_obsidian_sync
 import nanjing_lbs_engine
 from nanjing_seeds import NANJING_COMPREHENSIVE_SEEDS

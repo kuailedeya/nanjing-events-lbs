@@ -12,14 +12,15 @@ import csv
 import gzip
 import json
 import shutil
+import os
 import subprocess
 import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
 
-PROJECT = Path(r"E:\usage\ai-intel-postgres")
-VAULT = Path(r"E:\Note storage\IOT\AI 羊毛与编程动态")
+PROJECT = Path(__file__).resolve().parent
+VAULT = Path(os.environ.get("VAULT_DIR", r"E:\Note storage\IOT")) / "AI 羊毛与编程动态"
 ARCHIVE = PROJECT / "archive" / "2026-10-22"
 
 sys.path.insert(0, str(PROJECT))

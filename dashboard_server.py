@@ -761,7 +761,7 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
     )
     days_left, time_status = nanjing_lbs_engine.compute_lifecycle(start_date, end_date)
     is_free, price_num = nanjing_lbs_engine.extract_price_and_free(benefit, title, summary)
-    tags_list = nanjing_lbs_engine.build_tags(cat, sub_cat, district, is_free, platform, location)
+    tags_list = nanjing_lbs_engine.build_tags(cat, sub_cat, district, is_free, platform, location, title)
     geom_wkt = f"POINT({lng} {lat})"
 
     # 3. 生成全局唯一 post_id
@@ -1343,23 +1343,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Expose-Headers", "ETag, Content-Length")
         self.send_header("Access-Control-Max-Age", "86400")
 
-    def _send_json(self, data: Any, status: int = 200, check_etag: bool = False) -> None:
+    def _send_json(
+        self, data: Any, status: int = 200, check_etag: bool = False, cache_seconds: int = 60
+    ) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         if check_etag and status == 200:
             etag = f'"{hashlib.md5(body).hexdigest()}"'
+            cache_control = (
+                f"public, max-age={cache_seconds}, must-revalidate"
+                if cache_seconds > 0
+                else "public, max-age=0, must-revalidate"
+            )
             if_none_match = self.headers.get("If-None-Match", "").strip()
             if if_none_match == etag:
                 self.send_response(304)
                 self._send_cors_headers()
                 self.send_header("ETag", etag)
-                self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+                self.send_header("Cache-Control", cache_control)
                 self.end_headers()
                 return
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self._send_cors_headers()
             self.send_header("ETag", etag)
-            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+            self.send_header("Cache-Control", cache_control)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -1420,6 +1427,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "UI index not found"}, 404)
             return
 
+        if parsed.path in ("/favicon.ico", "/favicon.svg"):
+            fav = FRONTEND_DIST / parsed.path.lstrip("/")
+            if not fav.exists():
+                fav = BASE_DIR / "frontend" / "public" / parsed.path.lstrip("/")
+            if fav.exists():
+                content = fav.read_bytes()
+                mime = "image/x-icon" if parsed.path.endswith(".ico") else "image/svg+xml"
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self._send_cors_headers()
+                self.send_header("Cache-Control", "public, max-age=604800")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
         if parsed.path.startswith("/assets/"):
             filename = parsed.path[len("/assets/"):].lstrip("/")
             safe_target: Optional[Path] = None
@@ -1468,6 +1491,65 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
+            return
+
+        # ----------------------------------------------------------------------
+        # 1.1 防盗链跨源图片代理 (GET /api/proxy/image?url=...)
+        # ----------------------------------------------------------------------
+        if parsed.path == "/api/proxy/image":
+            target_url = (qparams.get("url") or [""])[0].strip()
+            if not target_url or not target_url.startswith(("http://", "https://")):
+                self._send_json({"ok": False, "error": "Invalid or missing image URL"}, 400)
+                return
+
+            parsed_target = urlparse(target_url)
+            allowed_hosts = (
+                "qpic.cn",
+                "weixin.qq.com",
+                "xhscdn.com",
+                "xiaohongshu.com",
+                "unsplash.com",
+                "amap.com",
+            )
+            target_host = parsed_target.hostname or ""
+            if not any(target_host == h or target_host.endswith("." + h) for h in allowed_hosts):
+                self._send_json({"ok": False, "error": "Target host not permitted by SSRF policy"}, 403)
+                return
+
+            try:
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                }
+                if "qpic.cn" in target_host or "weixin" in target_host:
+                    headers["Referer"] = "https://mp.weixin.qq.com/"
+                elif "xhscdn" in target_host or "xiaohongshu" in target_host:
+                    headers["Referer"] = "https://www.xiaohongshu.com/"
+
+                req = urllib.request.Request(target_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    img_data = resp.read()
+                    content_type = resp.headers.get("Content-Type", "image/jpeg")
+
+                etag = f'"{hashlib.md5(img_data).hexdigest()}"'
+                if_none_match = self.headers.get("If-None-Match", "").strip()
+                if if_none_match == etag:
+                    self.send_response(304)
+                    self._send_cors_headers()
+                    self.send_header("ETag", etag)
+                    self.send_header("Cache-Control", "public, max-age=86400")
+                    self.end_headers()
+                    return
+
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self._send_cors_headers()
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.send_header("Content-Length", str(len(img_data)))
+                self.end_headers()
+                self.wfile.write(img_data)
+            except Exception as e:
+                self._send_json({"ok": False, "error": f"Image proxy failed: {str(e)}"}, 502)
             return
 
         # ----------------------------------------------------------------------

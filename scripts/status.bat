@@ -8,6 +8,6 @@ python -c "import urllib.request, json; res = json.loads(urllib.request.urlopen(
 
 if %errorlevel% neq 0 (
     echo [!] 服务未运行或端口 8765 无法连接。
-    echo 您可以双击 E:\usage\scripts\start_silent.vbs 启动后台服务。
+    echo 您可以双击 %~dp0start_silent.vbs 启动后台服务。
 )
 pause

@@ -34,6 +34,7 @@ COPY social_obsidian_sync.py .
 COPY nanjing_seeds.py .
 COPY generate_apple_dashboard.py .
 COPY dashboard.html .
+COPY assets ./assets
 COPY local.db ./data/local.db
 COPY local.db .
 COPY frontend/dist ./frontend/dist

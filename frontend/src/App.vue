@@ -13,11 +13,11 @@
     </div>
 
     <!-- 2. 顶部：悬浮于地图左上方的通透圆角浮动岛屿 (Floating Island，严格单行无留白) -->
-    <header class="absolute top-4 left-4 right-4 sm:right-auto md:top-6 md:left-6 z-20 pointer-events-auto max-w-full md:max-w-[720px]">
-      <div class="bg-white/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[22px] shadow-[0_20px_50px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.03)] border border-white/80 p-1.5 sm:p-2 flex flex-nowrap items-center whitespace-nowrap gap-2 transition-all overflow-x-auto no-scrollbar">
+    <header class="absolute top-3 left-3 right-3 sm:right-auto md:top-6 md:left-6 z-20 pointer-events-auto max-w-full md:max-w-[720px]">
+      <div class="bg-white/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[22px] shadow-[0_20px_50px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.03)] border border-white/80 p-1.5 sm:p-2 flex items-center justify-between gap-1.5 sm:gap-2 transition-all">
         
         <!-- Airbnb 风格紧凑搜索框 -->
-        <div class="relative flex items-center w-32 sm:w-44 md:w-56 shrink-0">
+        <div class="relative flex items-center flex-1 sm:flex-initial sm:w-44 md:w-56 shrink min-w-0">
           <Search class="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
           <input
             v-model="searchQuery"
@@ -41,7 +41,7 @@
             :key="cat.value"
             @click="activeCategory = cat.value"
             :class="[
-              'px-2.5 py-1 rounded-lg transition-all text-xs cursor-pointer',
+              'px-2 sm:px-2.5 py-1 rounded-lg transition-all text-xs cursor-pointer',
               activeCategory === cat.value
                 ? 'bg-white text-slate-900 shadow-[0_2px_6px_rgba(0,0,0,0.1)] font-semibold'
                 : 'text-slate-500 hover:text-slate-900'
@@ -51,8 +51,8 @@
           </button>
         </div>
 
-        <!-- 线上/线下实体场馆切换器 -->
-        <div class="flex items-center p-0.5 bg-black/[0.04] rounded-xl text-xs font-medium text-slate-600 shrink-0">
+        <!-- 线上/线下实体场馆切换器 (大屏展示，移动端融入 Filter Popover) -->
+        <div class="hidden lg:flex items-center p-0.5 bg-black/[0.04] rounded-xl text-xs font-medium text-slate-600 shrink-0">
           <button
             @click="venueFilter = 'ALL'"
             :class="[
@@ -84,11 +84,11 @@
           </button>
         </div>
 
-        <!-- 待去清单快捷过滤 -->
+        <!-- 待去清单快捷过滤 (平板以上大屏展示，移动端融入 Filter Popover) -->
         <button
           @click="showFavoritesOnly = !showFavoritesOnly"
           :class="[
-            'px-2.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-xs font-medium shrink-0',
+            'hidden md:flex px-2.5 py-1.5 rounded-xl transition-all cursor-pointer items-center gap-1 text-xs font-medium shrink-0',
             showFavoritesOnly
               ? 'bg-amber-500 text-white shadow-sm font-semibold'
               : 'bg-black/[0.04] text-slate-700 hover:bg-black/[0.07]'
@@ -106,6 +106,7 @@
             'p-1.5 rounded-xl transition-all cursor-pointer relative shrink-0',
             hasActiveFilter ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-black/[0.04]'
           ]"
+          title="高级筛选"
         >
           <Filter class="w-4 h-4" />
           <span v-if="hasActiveFilter" class="w-1.5 h-1.5 rounded-full bg-[#34C759] absolute top-1 right-1"></span>
@@ -116,6 +117,7 @@
           @click="triggerSync"
           :disabled="isSyncing"
           class="p-1.5 rounded-xl text-slate-600 hover:bg-black/[0.04] transition-all cursor-pointer shrink-0"
+          title="增量同步"
         >
           <RefreshCw :class="['w-4 h-4', isSyncing ? 'animate-spin text-[#007AFF]' : '']" />
         </button>
@@ -126,6 +128,34 @@
         v-if="showFilterPopover"
         class="mt-2 p-3 bg-white/90 backdrop-blur-2xl backdrop-saturate-150 rounded-[20px] shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-white/80 flex items-center gap-3 text-xs animate-in fade-in slide-in-from-top-2 duration-200 flex-wrap"
       >
+        <!-- 移动端额外融入：场馆全览/线下/羊毛切换 -->
+        <div class="flex lg:hidden items-center p-0.5 bg-black/[0.04] rounded-lg text-xs font-medium text-slate-600">
+          <button
+            @click="venueFilter = 'ALL'"
+            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer', venueFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500']"
+          >全览</button>
+          <button
+            @click="venueFilter = 'PHYSICAL'"
+            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer flex items-center gap-1', venueFilter === 'PHYSICAL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500']"
+          ><span class="w-1.5 h-1.5 rounded-full bg-[#007AFF]"></span>线下</button>
+          <button
+            @click="venueFilter = 'ONLINE'"
+            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer flex items-center gap-1', venueFilter === 'ONLINE' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500']"
+          ><span class="w-1.5 h-1.5 rounded-full bg-[#34C759]"></span>羊毛</button>
+        </div>
+
+        <!-- 移动端额外融入：待去清单过滤 -->
+        <button
+          @click="showFavoritesOnly = !showFavoritesOnly"
+          :class="[
+            'flex md:hidden px-2 py-1 rounded-lg text-xs font-medium transition cursor-pointer items-center gap-1',
+            showFavoritesOnly ? 'bg-amber-500 text-white shadow-sm font-semibold' : 'text-slate-700 bg-black/[0.04]'
+          ]"
+        >
+          <Star class="w-3 h-3" :class="showFavoritesOnly ? 'fill-white text-white' : 'text-amber-500 fill-amber-500'" />
+          <span class="text-[11px]">待去 ({{ favoriteIds.length }})</span>
+        </button>
+
         <div class="flex items-center gap-1.5 text-slate-700">
           <Calendar class="w-3.5 h-3.5 text-slate-400" />
           <div class="flex items-center gap-1 bg-black/[0.04] p-0.5 rounded-lg">
@@ -148,7 +178,7 @@
         <div class="flex items-center gap-1.5 text-slate-600">
           <MapPin class="w-3.5 h-3.5 text-slate-400" />
           <select v-model="selectedDistrict" @change="onDistrictChange" class="bg-transparent border-0 outline-none font-medium cursor-pointer text-slate-800 text-xs">
-            <option value="ALL">全城区域 (11区)</option>
+            <option value="ALL">全城区域 (含江北新区)</option>
             <option v-for="d in districts" :key="d" :value="d">{{ d }}</option>
           </select>
         </div>
@@ -210,7 +240,7 @@
       </div>
     </header>
 
-    <!-- 3. 左下角：底图与可视化控制岛 (统一 Apple 风格激活态，无杂色) -->
+    <!-- 3. 左下角：底图与可视化控制岛 (桌面端) -->
     <div class="hidden sm:flex absolute bottom-6 left-6 z-20 items-center gap-2 pointer-events-auto">
       <!-- 地图模式切换胶囊 -->
       <div class="bg-white/80 backdrop-blur-2xl backdrop-saturate-150 p-1 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 flex items-center gap-1 text-xs">
@@ -270,8 +300,47 @@
       <button
         @click="recenterMap"
         class="p-2.5 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-slate-700 hover:text-slate-950 hover:bg-white transition cursor-pointer"
+        title="复位新街口"
       >
         <Crosshair class="w-4 h-4" />
+      </button>
+    </div>
+
+    <!-- 3b. 移动端浮动操作岛 (Floating Controls Stack, Apple Maps 风格) -->
+    <div class="sm:hidden absolute top-20 right-3 z-20 flex flex-col items-center gap-2 pointer-events-auto">
+      <button
+        @click="recenterMap"
+        class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center text-slate-700 active:scale-95 transition"
+        title="复位新街口"
+      >
+        <Crosshair class="w-4 h-4" />
+      </button>
+
+      <button
+        @click="cycleMapMode"
+        class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center active:scale-95 transition"
+        title="切换底图"
+      >
+        <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: currentMapModeColor }"></span>
+      </button>
+
+      <button
+        @click="toggleHeatmap"
+        :class="[
+          'w-9 h-9 rounded-full backdrop-blur-md shadow-md border transition flex items-center justify-center active:scale-95',
+          showHeatmap ? 'bg-slate-950 text-white border-slate-950' : 'bg-white/90 text-slate-700 border-white/80'
+        ]"
+        title="热力图"
+      >
+        <Flame class="w-4 h-4" :class="showHeatmap ? 'text-[#FF3B30]' : 'text-slate-400'" />
+      </button>
+
+      <button
+        @click="openStatsModal"
+        class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center text-slate-700 active:scale-95 transition"
+        title="统计洞察"
+      >
+        <BarChart3 class="w-4 h-4 text-[#007AFF]" />
       </button>
     </div>
 
@@ -279,8 +348,8 @@
     <aside
       :class="[
         'z-20 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pointer-events-auto',
-        // 移动端 (< 768px): 贴底上拉 Bottom Sheet
-        'fixed inset-x-0 bottom-0 max-h-[50vh] rounded-t-[28px] border-t border-white/80 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] bg-[#F5F5F7]/95 backdrop-blur-2xl',
+        // 移动端 (< 768px): 贴底上拉 Bottom Sheet (58vh 高度，给卡片更多留白)
+        'fixed inset-x-0 bottom-0 max-h-[58vh] h-[58vh] md:h-auto rounded-t-[28px] border-t border-white/80 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] bg-[#F5F5F7]/95 backdrop-blur-2xl',
         // 桌面端 (>= 768px): 右侧悬浮亚克力抽屉
         'md:fixed md:top-6 md:right-6 md:bottom-6 md:left-auto md:w-[420px] md:max-h-none md:rounded-[28px] md:border md:border-white/80 md:shadow-[0_20px_50px_rgba(0,0,0,0.1)]',
         !drawerOpen ? 'translate-y-full md:translate-y-0 md:translate-x-[calc(100%+24px)]' : 'translate-y-0 md:translate-x-0'
@@ -405,21 +474,27 @@
               v-for="item in filteredEvents"
               :key="item.id"
               :id="'card-' + item.id"
+              tabindex="0"
+              role="button"
+              :aria-label="item.title + '，' + (item.is_free ? '免票直入' : item.benefit)"
               @click="openDetail(item)"
+              @keydown.enter="openDetail(item)"
+              @keydown.space.prevent="openDetail(item)"
               @mouseenter="activeEventId = item.id"
               @mouseleave="activeEventId = detailItem ? detailItem.id : null"
               :class="[
-                'group bg-white rounded-2xl p-3.5 transition-all duration-300 cursor-pointer border flex flex-col',
+                'group bg-white rounded-2xl p-3 sm:p-3.5 transition-all duration-300 cursor-pointer border flex flex-col focus:outline-none focus:ring-2 focus:ring-[#007AFF]',
                 activeEventId === item.id
                   ? 'ring-2 ring-[#007AFF] border-transparent shadow-[0_16px_36px_rgba(0,122,255,0.16)] -translate-y-1'
                   : 'border-black/[0.04] shadow-[0_4px_16px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1'
               ]"
             >
-              <!-- Bento 封面图 -->
-              <div class="relative w-full h-36 rounded-xl overflow-hidden mb-3 bg-slate-100 group-hover:scale-[1.01] transition-transform duration-300 shrink-0">
+              <!-- Bento 封面图 (移动端高度自适应 h-28，桌面端 h-36) -->
+              <div class="relative w-full h-28 sm:h-32 md:h-36 rounded-xl overflow-hidden mb-2.5 sm:mb-3 bg-slate-100 group-hover:scale-[1.01] transition-transform duration-300 shrink-0">
                 <img
                   :src="getEventCover(item)"
                   :alt="item.title"
+                  @error="handleImageError"
                   loading="lazy"
                   class="w-full h-full object-cover rounded-xl"
                 />
@@ -531,11 +606,16 @@
                   v-for="item in group.items"
                   :key="item.id"
                   :id="'timeline-card-' + item.id"
+                  tabindex="0"
+                  role="button"
+                  :aria-label="item.title + '，' + (item.is_free ? '免票' : item.benefit)"
                   @click="openDetail(item)"
+                  @keydown.enter="openDetail(item)"
+                  @keydown.space.prevent="openDetail(item)"
                   @mouseenter="activeEventId = item.id"
                   @mouseleave="activeEventId = detailItem ? detailItem.id : null"
                   :class="[
-                    'group relative bg-white rounded-2xl p-3 transition-all duration-300 cursor-pointer border flex flex-col',
+                    'group relative bg-white rounded-2xl p-3 transition-all duration-300 cursor-pointer border flex flex-col focus:outline-none focus:ring-2 focus:ring-[#007AFF]',
                     activeEventId === item.id
                       ? 'ring-2 ring-[#007AFF] border-transparent shadow-[0_16px_36px_rgba(0,122,255,0.16)] -translate-y-0.5'
                       : 'border-black/[0.04] shadow-[0_3px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5'
@@ -548,7 +628,7 @@
 
                   <div class="flex gap-3">
                     <div class="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                      <img :src="getEventCover(item)" :alt="item.title" loading="lazy" class="w-full h-full object-cover rounded-xl" />
+                      <img :src="getEventCover(item)" :alt="item.title" @error="handleImageError" loading="lazy" class="w-full h-full object-cover rounded-xl" />
                       <span class="absolute bottom-1 left-1 px-1.5 py-0.2 rounded text-[9px] font-semibold backdrop-blur-md bg-black/60 text-white tabular-nums">
                         {{ item.distance_km }}km
                       </span>
@@ -613,13 +693,19 @@
         class="fixed inset-0 z-40 bg-black/25 backdrop-blur-xs flex justify-end transition-opacity duration-300 pointer-events-auto"
         @click.self="closeDetail"
       >
-        <div class="w-full sm:w-[420px] md:w-[460px] h-full bg-white/95 backdrop-blur-3xl shadow-[0_25px_70px_rgba(0,0,0,0.2)] border-l border-white/80 flex flex-col overflow-hidden">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="活动详情"
+          class="w-full sm:w-[420px] md:w-[460px] h-full bg-white/95 backdrop-blur-3xl shadow-[0_25px_70px_rgba(0,0,0,0.2)] border-l border-white/80 flex flex-col overflow-hidden"
+        >
           
           <!-- 封面大图 -->
           <div class="relative w-full h-56 bg-slate-100 shrink-0 overflow-hidden">
             <img
               :src="getEventCover(detailItem)"
               :alt="detailItem.title"
+              @error="handleImageError"
               class="w-full h-full object-cover"
             />
             <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/20"></div>
@@ -743,7 +829,12 @@
       class="fixed inset-0 z-50 bg-black/35 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200 pointer-events-auto"
       @click.self="closeStatsModal"
     >
-      <div class="relative w-full max-w-4xl bg-white/95 backdrop-blur-3xl rounded-[28px] border border-white/80 shadow-[0_25px_70px_rgba(0,0,0,0.25)] p-6 flex flex-col max-h-[92vh] overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="南京活动概览统计"
+        class="relative w-full max-w-4xl bg-white/95 backdrop-blur-3xl rounded-[28px] border border-white/80 shadow-[0_25px_70px_rgba(0,0,0,0.25)] p-6 flex flex-col max-h-[92vh] overflow-hidden"
+      >
         <div class="flex items-center justify-between pb-4 border-b border-black/[0.05] shrink-0">
           <div class="flex items-center gap-2">
             <h2 class="text-base font-semibold text-slate-900 tracking-tight">南京活动概览</h2>
@@ -796,7 +887,6 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import L from 'leaflet';
 import 'leaflet.heat';
-import * as echarts from 'echarts';
 import {
   Search, X, Building2, Globe, Star, Sparkles, Filter, RefreshCw,
   Calendar, Clock, MapPin, Navigation, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
@@ -817,8 +907,25 @@ const DISTRICT_CENTERS = {
   '浦口区': [118.6280, 32.0588],
   '六合区': [118.8413, 32.3421],
   '溧水区': [119.0287, 31.6531],
-  '高淳区': [118.8758, 31.3271]
+  '高淳区': [118.8758, 31.3271],
+  '江北新区': [118.6980, 32.1480]
 };
+
+// 安全 Storage 存取防崩溃保护
+function safeGetFavorites() {
+  try {
+    const raw = localStorage.getItem('nj_lbs_favs');
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function safeSetFavorites(ids) {
+  try {
+    localStorage.setItem('nj_lbs_favs', JSON.stringify(ids));
+  } catch (e) {}
+}
 
 // 状态变量
 const events = ref([]);
@@ -827,6 +934,15 @@ const detailItem = ref(null);
 const currentViewMode = ref('cards');
 const drawerOpen = ref(true);
 const searchQuery = ref('');
+const debouncedSearch = ref('');
+let searchTimer = null;
+watch(searchQuery, (val) => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    debouncedSearch.value = (val || '').trim();
+  }, 180);
+});
+
 const activeCategory = ref('ALL');
 const venueFilter = ref('ALL');
 const showFavoritesOnly = ref(false);
@@ -841,7 +957,7 @@ const freeOnly = ref(false);
 const selectedCalendarDate = ref(null);
 const sortBy = ref('distance');
 const activeZoneLabel = ref('全城');
-const favoriteIds = ref(JSON.parse(localStorage.getItem('nj_lbs_favs') || '[]'));
+const favoriteIds = ref(safeGetFavorites());
 
 // 地图图层状态
 const mapStyleMode = ref('standard');
@@ -960,8 +1076,21 @@ const zoneTeleports = [
   { label: '老门东/秦淮', coords: [118.7981, 32.0163], zoom: 15 },
   { label: '河西/建邺', coords: [118.7327, 32.0045], zoom: 14 },
   { label: '仙林大学城', coords: [118.9288, 32.1025], zoom: 14 },
-  { label: '江宁百家湖', coords: [118.8258, 31.9325], zoom: 14 }
+  { label: '江宁百家湖', coords: [118.8258, 31.9325], zoom: 14 },
+  { label: '江北核心区', coords: [118.6980, 32.1480], zoom: 14 }
 ];
+
+function cycleMapMode() {
+  const ids = mapModes.map(m => m.id);
+  const curIdx = ids.indexOf(mapStyleMode.value);
+  const nextIdx = (curIdx + 1) % ids.length;
+  setMapMode(ids[nextIdx]);
+}
+
+const currentMapModeColor = computed(() => {
+  const cur = mapModes.find(m => m.id === mapStyleMode.value);
+  return cur ? cur.color : '#007AFF';
+});
 
 const hasActiveFilter = computed(() => {
   return timeFilter.value !== 'ALL' || selectedDistrict.value !== 'ALL' || radiusFilter.value > 0 || freeOnly.value;
@@ -972,7 +1101,10 @@ function resetFilters() {
   selectedDistrict.value = 'ALL';
   radiusFilter.value = 0;
   freeOnly.value = false;
+  venueFilter.value = 'ALL';
+  showFavoritesOnly.value = false;
   searchQuery.value = '';
+  debouncedSearch.value = '';
 }
 
 // 距离测算辅助函数
@@ -987,7 +1119,7 @@ function calcDistance(lat1, lon1, lat2, lon2) {
   return Math.round(R * c * 10) / 10;
 }
 
-// 14 天滑动日历
+// 14 天滑动日历 (采用本地真实时区格式化，彻底消除 UTC+8 凌晨日期漂移)
 const calendarDays = computed(() => {
   const days = [];
   const today = new Date();
@@ -995,7 +1127,10 @@ const calendarDays = computed(() => {
   for (let i = 0; i < 14; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
-    const iso = d.toISOString().split('T')[0];
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dayNum = String(d.getDate()).padStart(2, '0');
+    const iso = `${y}-${m}-${dayNum}`;
     const count = events.value.filter(it => {
       if (!it.start_date || !it.end_date) return true;
       return it.start_date <= iso && it.end_date >= iso;
@@ -1015,7 +1150,7 @@ function selectCalendarDay(iso) {
   selectedCalendarDate.value = selectedCalendarDate.value === iso ? null : iso;
 }
 
-// 数据筛选与排序
+// 数据筛选与排序 (支持防抖多字段检索与江北新区聚类)
 const filteredEvents = computed(() => {
   let list = events.value.filter(it => {
     if (activeCategory.value !== 'ALL' && it.category !== activeCategory.value) return false;
@@ -1028,11 +1163,14 @@ const filteredEvents = computed(() => {
     if (selectedCalendarDate.value && it.start_date && it.end_date) {
       if (it.start_date > selectedCalendarDate.value || it.end_date < selectedCalendarDate.value) return false;
     }
-    if (searchQuery.value) {
-      const q = searchQuery.value.toLowerCase().trim();
+    if (debouncedSearch.value) {
+      const q = debouncedSearch.value.toLowerCase();
       const match = (it.title || '').toLowerCase().includes(q) ||
+                    (it.short_title || '').toLowerCase().includes(q) ||
                     (it.address || '').toLowerCase().includes(q) ||
-                    (it.district || '').toLowerCase().includes(q);
+                    (it.district || '').toLowerCase().includes(q) ||
+                    (it.summary || '').toLowerCase().includes(q) ||
+                    (Array.isArray(it.tags) && it.tags.some(t => t.toLowerCase().includes(q)));
       if (!match) return false;
     }
     return true;
@@ -1372,7 +1510,11 @@ function toggleFavorite(item) {
     favoriteIds.value.push(item.id);
     showToast('已加入待去清单', 'success');
   }
-  localStorage.setItem('nj_lbs_favs', JSON.stringify(favoriteIds.value));
+  safeSetFavorites(favoriteIds.value);
+}
+
+function handleImageError(e) {
+  e.target.src = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80';
 }
 
 function copyAddress(addr) {
@@ -1470,11 +1612,20 @@ function closeStatsModal() {
   }
 }
 
-function initCharts() {
+let echartsLib = null;
+async function getEcharts() {
+  if (!echartsLib) {
+    echartsLib = await import('echarts');
+  }
+  return echartsLib;
+}
+
+async function initCharts() {
   const distEl = document.getElementById('district-chart');
   const catEl = document.getElementById('category-chart');
   if (!distEl || !catEl) return;
 
+  const echarts = await getEcharts();
   const distCounts = {};
   districts.forEach(d => { distCounts[d] = 0; });
   const catCounts = { '南京展会': 0, '南京活动': 0, '羊毛福利': 0 };
@@ -1484,6 +1635,7 @@ function initCharts() {
     if (it.category in catCounts) catCounts[it.category]++;
   });
 
+  if (districtChartInstance) districtChartInstance.dispose();
   districtChartInstance = echarts.init(distEl);
   districtChartInstance.setOption({
     tooltip: { trigger: 'axis' },
@@ -1493,6 +1645,7 @@ function initCharts() {
     series: [{ data: districts.map(d => distCounts[d]), type: 'bar', itemStyle: { color: '#007AFF', borderRadius: [4, 4, 0, 0] } }]
   });
 
+  if (categoryChartInstance) categoryChartInstance.dispose();
   categoryChartInstance = echarts.init(catEl);
   categoryChartInstance.setOption({
     tooltip: { trigger: 'item' },
@@ -1521,14 +1674,28 @@ function handleGlobalKeydown(e) {
   }
 }
 
+function handleWindowResize() {
+  if (districtChartInstance) districtChartInstance.resize();
+  if (categoryChartInstance) categoryChartInstance.resize();
+  if (leafletMap) leafletMap.invalidateSize();
+}
+
+watch(drawerOpen, () => {
+  setTimeout(() => {
+    if (leafletMap) leafletMap.invalidateSize();
+  }, 350);
+});
+
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown);
+  window.addEventListener('resize', handleWindowResize);
   initMap();
   loadData();
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown);
+  window.removeEventListener('resize', handleWindowResize);
   if (leafletMap) {
     leafletMap.remove();
     leafletMap = null;
