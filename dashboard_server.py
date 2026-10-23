@@ -872,12 +872,43 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
     conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
     try:
         with conn:
+            existing_st = conn.execute(
+                "SELECT status FROM nj_events WHERE id = ?", (post_id,)
+            ).fetchone()
+            if not existing_st:
+                existing_st = conn.execute(
+                    "SELECT status FROM nanjing_deals_events WHERE post_id = ?", (post_id,)
+                ).fetchone()
+            safe_status = existing_st[0] if (existing_st and existing_st[0]) else "待去/待薅"
+
+            # 处理同一 URL 剪藏多项不同活动，防止唯一键冲突
+            actual_url = source_url
+            existing_url = conn.execute(
+                "SELECT id FROM nj_events WHERE source_url = ? AND id != ?", (actual_url, post_id)
+            ).fetchone()
+            if existing_url:
+                actual_url = f"{source_url}#{post_id}"
+
             conn.execute(
                 """
-                INSERT OR REPLACE INTO nanjing_deals_events
+                INSERT INTO nanjing_deals_events
                 (post_id, category, title, event_time, location, benefit, action_guide,
                  summary, platform, author, publish_date, likes, status, url, obsidian_path)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(post_id) DO UPDATE SET
+                    category=excluded.category,
+                    title=excluded.title,
+                    event_time=excluded.event_time,
+                    location=excluded.location,
+                    benefit=excluded.benefit,
+                    action_guide=excluded.action_guide,
+                    summary=excluded.summary,
+                    platform=excluded.platform,
+                    author=excluded.author,
+                    publish_date=excluded.publish_date,
+                    url=excluded.url,
+                    obsidian_path=excluded.obsidian_path,
+                    status=excluded.status
                 """,
                 (
                     post_id,
@@ -892,14 +923,14 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
                     author,
                     publish_date,
                     0,
-                    "待去/待薅",
-                    source_url,
+                    safe_status,
+                    actual_url,
                     rel_path,
                 ),
             )
 
-            # 先行清理同 ID 或同 URL 的历史记录，彻底规避双唯一约束冲突
-            conn.execute("DELETE FROM nj_events WHERE id = ? OR source_url = ?", (post_id, source_url))
+            # 仅按 ID 清理，严禁按 source_url 清理
+            conn.execute("DELETE FROM nj_events WHERE id = ?", (post_id,))
             conn.execute(
                 """
                 INSERT INTO nj_events (
@@ -907,6 +938,31 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
                     event_time_text, district, address, lng, lat, geom, benefit, is_free, action_guide,
                     summary, tags, extra_info, source_url, obsidian_path, status, extra_sources, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    title=excluded.title,
+                    category=excluded.category,
+                    sub_category=excluded.sub_category,
+                    start_date=excluded.start_date,
+                    end_date=excluded.end_date,
+                    start_time=excluded.start_time,
+                    end_time=excluded.end_time,
+                    event_time_text=excluded.event_time_text,
+                    district=excluded.district,
+                    address=excluded.address,
+                    lng=excluded.lng,
+                    lat=excluded.lat,
+                    geom=excluded.geom,
+                    benefit=excluded.benefit,
+                    is_free=excluded.is_free,
+                    action_guide=excluded.action_guide,
+                    summary=excluded.summary,
+                    tags=excluded.tags,
+                    extra_info=excluded.extra_info,
+                    source_url=excluded.source_url,
+                    obsidian_path=excluded.obsidian_path,
+                    status=excluded.status,
+                    extra_sources=excluded.extra_sources,
+                    updated_at=excluded.updated_at
                 """,
                 (
                     post_id,
@@ -929,9 +985,9 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
                     summary,
                     json.dumps(tags_list, ensure_ascii=False),
                     json.dumps(extra_obj, ensure_ascii=False),
-                    source_url,
+                    actual_url,
                     rel_path,
-                    "待去/待薅",
+                    safe_status,
                     "[]",
                     now_str,
                 ),

@@ -685,9 +685,11 @@
             </div>
           </div>
 
-          <div v-if="filteredEvents.length === 0" class="py-20 text-center text-xs text-slate-400">
-            暂无匹配的同城活动
-          </div>
+          <EmptyState
+            v-if="filteredEvents.length === 0"
+            :is-favorites-mode="showFavoritesOnly"
+            @reset="resetFilters"
+          />
         </div>
       </div>
     </aside>
@@ -928,6 +930,7 @@ import {
   Layers, Flame, BarChart3, Crosshair, ExternalLink, Copy, Check, FileText, Disc, Compass
 } from 'lucide-vue-next';
 import { resolveEventCover } from './utils/covers.js';
+import EmptyState from './components/EmptyState.vue';
 
 // 城市中心常量 (南京新街口原点)
 const XINJIEKOU = [118.7969, 32.0436]; // [lng, lat]
