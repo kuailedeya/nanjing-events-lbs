@@ -1536,6 +1536,45 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.wfile.write(content)
                 return
 
+        # ----------------------------------------------------------------------
+        # 1.1 本地高清封面图静态路由 (/covers/...)
+        # ----------------------------------------------------------------------
+        if parsed.path.startswith("/covers/"):
+            filename = parsed.path[len("/covers/"):].lstrip("/")
+            safe_target: Optional[Path] = None
+
+            for base_dir in (
+                FRONTEND_DIST / "covers",
+                BASE_DIR / "frontend" / "public" / "covers",
+                BASE_DIR / "assets" / "covers"
+            ):
+                try:
+                    candidate = (base_dir / filename).resolve()
+                    base_resolved = base_dir.resolve()
+                    if candidate.is_relative_to(base_resolved) and candidate.is_file() and candidate.exists():
+                        safe_target = candidate
+                        break
+                except Exception:
+                    continue
+
+            if not safe_target:
+                if ".." in filename or "/." in filename or "\\." in filename:
+                    self._send_json({"error": "Forbidden: Path traversal detected"}, 403)
+                else:
+                    self._send_json({"error": "Cover image not found"}, 404)
+                return
+
+            content = safe_target.read_bytes()
+            mime = "image/jpeg" if safe_target.suffix.lower() in (".jpg", ".jpeg") else "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self._send_cors_headers()
+            self.send_header("Cache-Control", "public, max-age=604800")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
         if parsed.path.startswith("/assets/"):
             filename = parsed.path[len("/assets/"):].lstrip("/")
             safe_target: Optional[Path] = None
