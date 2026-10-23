@@ -45,7 +45,38 @@
 
 ---
 
-## 二、 第一轮已修复历史问题汇总
+## 二、 第三轮深挖：现代化自动化测试、无障碍 (WCAG 2.1 AA) 与性能重构
+
+### 1. 现代化自动化测试体系与武器装备升级
+- **深挖定位**：原有测试依赖手工点选或静态判断，缺少端到端自动化模拟与现代无障碍可访问性审计。
+- **重构解决**：
+  - 引入 Microsoft `@playwright/test` 与 Deque Labs `@axe-core/playwright`。
+  - 建立双视口环境自动化覆盖：桌面端 Desktop Chrome (1440×900) 与移动端 Mobile iPhone (390×844)。
+  - 覆盖无障碍审计、空间交互（防抖搜索、URL 深度链接、全键盘导航、深色底图切换）、移动端触控防溢出共 20 项测试，100% 自动化通过。
+
+### 2. WCAG 4.1.2 按钮非法嵌套（Button Nesting Violation）
+- **深挖定位**：`@axe-core` 截获 Bento 卡片使用了 `<div role="button" tabindex="0">`，但其内部操作底栏直接包含了“待去收藏”、“定位”、“详情”原生 `<button>`，导致屏幕阅读器无障碍树解析冲突。
+- **重构解决**：将外层卡片容器重构为独立语义化 `<article tabindex="0">`，支持全卡片 Tab 聚焦与 Enter 键唤起，同时允许内部子按钮独立导航。
+
+### 3. 纯图标按钮缺少可访问文本（Discernible Text）
+- **深挖定位**：概览统计模态框关闭按钮、搜索清空按钮、底图切换控制胶囊缺少可辨识文本。
+- **重构解决**：全量补齐 `aria-label` 与 `title` 提示（如 `aria-label="关闭统计概览 (ESC)"`、`aria-label="清空搜索"`）。
+
+### 4. ECharts 按需 Tree-Shaking 瘦身 53%
+- **深挖定位**：全量打包 `echarts` 导致单 chunk 体积高达 1,135 kB。
+- **网络调研与解决**：创建 `frontend/src/utils/echarts.js`，通过 `echarts/core` 仅注册 `BarChart`、`PieChart`、`GridComponent`、`TooltipComponent` 与 `CanvasRenderer`。产物体积从 1,135 kB 直降至 524 kB（削减超过 611 kB，降幅 53%，gzip 仅 180 kB），并且作为动态 chunk 仅在打开统计模态框时异步下载。
+
+### 5. 原生 ResizeObserver 替换 Leaflet 地图 setTimeout 轮询
+- **深挖定位**：移动端抽屉上下拉伸或桌面端抽屉折叠时，使用 `setTimeout(350)` 调用 `map.invalidateSize()`，导致动画过程中出现灰色切片断层。
+- **网络调研与解决**：通过原生 `ResizeObserver` 监听地图容器元素，动态精准重算尺寸，并在 `onUnmounted` 中安全解绑断开，杜绝内存泄漏。
+
+### 6. 图片加载异常降级死循环阻断
+- **深挖定位**：`handleImageError` 将 `img.src` 重新指向远程 Unsplash 图片，在弱网或离线环境下会无限触发 `@error` 循环卡死浏览器。
+- **重构解决**：在错误回调中设置 `e.target.onerror = null`，并采用高保真内联 SVG Data URI（Apple 浅灰极简风格）进行本地离线自适应兜底。
+
+---
+
+## 三、 第一轮已修复历史问题汇总
 
 1. **移动端顶部 Floating Island 690px 严重溢出**：已通过流式自适应收敛至 329px。
 2. **移动端 Bottom Sheet 空间挤压**：高度扩容至 58vh，Bento 封面调整为响应式 h-28/36。

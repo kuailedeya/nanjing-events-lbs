@@ -84,7 +84,10 @@ def safe_float(val: Any, default: float, name: str = "") -> Tuple[float, Optiona
     if val is None or val == "":
         return default, None
     try:
-        return float(val), None
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default, f"参数 '{name}' 必须为有限有效数值 (当前值: '{val}')"
+        return f, None
     except (ValueError, TypeError):
         return default, f"参数 '{name}' 必须为有效浮点数 (当前值: '{val}')"
 
@@ -1717,7 +1720,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 )
                 item_c["days_left"] = d_left
                 item_c["time_status"] = t_stat
-                self._send_json({"ok": True, "event": item_c})
+                self._send_json({"ok": True, "event": item_c, "item": item_c})
             else:
                 self._send_json({"ok": False, "error": f"活动 '{event_id}' 不存在"}, 404)
             return
@@ -1728,7 +1731,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/events/nearby":
             center_lng, err_lng = safe_float((qparams.get("lng") or ["118.7842"])[0], 118.7842, "lng")
             center_lat, err_lat = safe_float((qparams.get("lat") or ["32.0418"])[0], 32.0418, "lat")
-            radius_km, err_rad = safe_float((qparams.get("radius_km") or ["5.0"])[0], 5.0, "radius_km")
+            raw_radius = qparams.get("radius_km") or qparams.get("radius") or ["5.0"]
+            radius_km, err_rad = safe_float(raw_radius[0], 5.0, "radius_km")
             limit, err_lim = safe_int((qparams.get("limit") or ["20"])[0], 20, "limit")
 
             for err in (err_lng, err_lat, err_rad, err_lim):
@@ -1758,6 +1762,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "count": len(limited),
                     "total_in_radius": len(filtered),
                     "items": limited,
+                    "events": limited,
                 },
                 check_etag=True,
             )
@@ -1852,6 +1857,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         # 2. 敏感写操作鉴权拦截
         if not self._check_auth():
+            if 0 < length <= MAX_BODY_SIZE:
+                try:
+                    self.rfile.read(length)
+                except Exception:
+                    pass
             self._send_json(
                 {"ok": False, "error": "Unauthorized: 未提供有效凭证 (Bearer Token 或 X-API-Key 错误)"},
                 401,

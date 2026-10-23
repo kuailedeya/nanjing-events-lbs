@@ -1274,6 +1274,7 @@ let satelliteOverlayLayer = null;
 let leafletMarkersGroup = null;
 let ringsGroup = null;
 let heatmapLayer = null;
+let mapResizeObserver = null;
 
 // 持久化 Map: eventId -> L.marker
 const markerMap = new Map();
@@ -1331,6 +1332,16 @@ function initMap() {
   }
   leafletMap.on('zoomend', updateZoomLOD);
   updateZoomLOD();
+
+  // 采用原生 ResizeObserver 监听容器，彻底替代脆弱的 setTimeout，保障动画与视口切换时 0 灰色断层
+  if (typeof ResizeObserver !== 'undefined' && container) {
+    mapResizeObserver = new ResizeObserver(() => {
+      if (leafletMap) {
+        leafletMap.invalidateSize({ debounceMoveEvents: true });
+      }
+    });
+    mapResizeObserver.observe(container);
+  }
 
   syncMarkersDiff();
 }
@@ -1604,7 +1615,9 @@ function toggleFavorite(item) {
 }
 
 function handleImageError(e) {
-  e.target.src = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80';
+  // 彻底阻断降级图片网络异常导致的无限递归死循环
+  e.target.onerror = null;
+  e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240"><rect width="400" height="240" fill="%23f1f5f9"/><circle cx="200" cy="105" r="24" fill="%23e2e8f0"/><path d="M190 100l8 8 14-14" stroke="%2394a3b8" stroke-width="2.5" fill="none" stroke-linecap="round"/><text x="50%" y="155" font-family="system-ui,-apple-system" font-size="12" font-weight="500" fill="%2394a3b8" text-anchor="middle">暂无图片预览</text></svg>';
 }
 
 function fallbackCopyText(text) {
@@ -1739,7 +1752,8 @@ function closeStatsModal() {
 let echartsLib = null;
 async function getEcharts() {
   if (!echartsLib) {
-    echartsLib = await import('echarts');
+    const mod = await import('./utils/echarts.js');
+    echartsLib = mod.default;
   }
   return echartsLib;
 }
@@ -1750,6 +1764,7 @@ async function initCharts() {
   if (!distEl || !catEl) return;
 
   const echarts = await getEcharts();
+  if (!showStatsModal.value) return;
   const distCounts = {};
   districts.forEach(d => { distCounts[d] = 0; });
   const catCounts = { '南京展会': 0, '南京活动': 0, '羊毛福利': 0 };
@@ -1805,15 +1820,15 @@ function handleWindowResize() {
 }
 
 watch(drawerOpen, () => {
-  setTimeout(() => {
+  nextTick(() => {
     if (leafletMap) leafletMap.invalidateSize();
-  }, 350);
+  });
 });
 
 watch(mobileSheetExpanded, () => {
-  setTimeout(() => {
+  nextTick(() => {
     if (leafletMap) leafletMap.invalidateSize();
-  }, 350);
+  });
 });
 
 onMounted(() => {
@@ -1826,6 +1841,10 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown);
   window.removeEventListener('resize', handleWindowResize);
+  if (mapResizeObserver) {
+    mapResizeObserver.disconnect();
+    mapResizeObserver = null;
+  }
   if (leafletMap) {
     leafletMap.remove();
     leafletMap = null;

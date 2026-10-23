@@ -461,6 +461,36 @@ def are_events_duplicate(item_a: Dict[str, Any], item_b: Dict[str, Any]) -> bool
     return sim >= 0.35
 
 
+EMOJI_RE = re.compile(r"[\U00010000-\U0010ffff\u2600-\u27bf\ufe0f]+")
+
+
+def clean_text(val: Any) -> str:
+    if not val:
+        return ""
+    return EMOJI_RE.sub("", str(val)).strip()
+
+
+def extract_short_title(title: str) -> str:
+    """提取精炼短标题，去除营销标签、括号与冗余前缀"""
+    if not title:
+        return "同城活动"
+    t = clean_text(title)
+    # 1. 去除无实质意义的括号内容 (如 "(南京)", "【官方首发】", "（限时免费）")
+    t = re.sub(r"[\(（【\[][^\)）】\]]*[\)）】\]]", " ", t)
+    # 2. 去除年份、行政区、通用行政组织与前缀
+    t = re.sub(r"^(?:202[4-9]年?|南京(?:市)?|华东|首届|第[一二三四五六七八九十0-9]+届|中国(?:\(南京\))?)", "", t).strip()
+    # 3. 去除前缀营销词与分隔符 (如 "重磅|", "必看·", "速领！")
+    t = re.sub(r"^[^\s|｜:：!！·]{1,6}[|｜:：!！·]\s*", "", t).strip()
+    # 4. 按常见分隔符切分第一核心段落
+    parts = [p.strip() for p in re.split(r"[|｜:：!！·\s\-_—/]+", t) if p.strip()]
+    candidate = parts[0] if parts else t
+    if len(candidate) < 2 and len(parts) > 1:
+        candidate = parts[1]
+    if len(candidate) > 16:
+        candidate = candidate[:16]
+    return candidate.strip() or "同城活动"
+
+
 def extract_price_and_free(benefit: str, title: str, summary: str) -> Tuple[bool, float]:
     txt = f"{benefit} {title} {summary}"
     is_free = bool(re.search(r"免费|免票|0元|0\.01|0\.1元|立减|消费券|补贴|羊毛|打卡领", txt))
@@ -486,6 +516,7 @@ def build_tags(
     tags = []
     if is_free:
         tags.append("免费/0元羊毛")
+        tags.append("免票直入")
     tags.append(district)
     tags.append(sub_category)
     tags.append(platform)
