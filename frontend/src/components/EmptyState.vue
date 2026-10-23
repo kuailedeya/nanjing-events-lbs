@@ -34,19 +34,19 @@
     </div>
 
     <!-- 主标题与副文案 -->
-    <h3 class="text-sm font-semibold text-slate-800 tracking-tight mb-1.5">
+    <h3 class="text-sm font-semibold text-slate-900 tracking-tight mb-1.5">
       {{ isFavoritesMode ? '待去清单暂无活动' : '未找到相关同城活动' }}
     </h3>
-    <p class="text-xs text-slate-400 max-w-[240px] leading-relaxed mb-4">
+    <p class="text-xs text-slate-600 font-medium max-w-[240px] leading-relaxed mb-4">
       {{ isFavoritesMode ? '浏览地图精选列表，点击卡片底部的「待去」按钮即可收藏' : '尝试调整搜索关键词，或重置当前分类与时态过滤条件' }}
     </p>
 
     <!-- 快捷恢复按钮 -->
     <button
       @click="$emit('reset')"
-      class="px-4 py-1.5 rounded-full text-xs font-medium bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all duration-200 cursor-pointer active:scale-95 flex items-center gap-1.5"
+      class="px-4 py-1.5 rounded-full text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all duration-200 cursor-pointer active:scale-95 flex items-center gap-1.5"
     >
-      <RefreshCw class="w-3 h-3 text-slate-300" />
+      <RefreshCw class="w-3 h-3 text-white/90" />
       <span>{{ isFavoritesMode ? '查看全部活动' : '清除全部筛选' }}</span>
     </button>
   </div>

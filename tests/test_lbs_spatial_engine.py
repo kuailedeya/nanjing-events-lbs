@@ -151,3 +151,75 @@ def test_sync_preserves_user_manual_status(tmp_path):
         nanjing_lbs_engine.SQLITE_PATH = orig_path
         conn.close()
 
+
+def test_cross_year_dates_not_inverted():
+    """验证跨年展会（如 12月25日-1月10日）结束年份自动递增，杜绝跨年活动被误算为已过期"""
+    s_date, e_date, s_iso, e_iso = nanjing_lbs_engine.parse_lifecycle_dates(
+        "2026年12月25日-1月10日", "2026-12-01"
+    )
+    assert s_date == "2026-12-25"
+    assert e_date == "2027-01-10"
+    assert s_date <= e_date
+    # 验证生命周期计算在 12月28日时是进行中，绝对不能是 expired
+    sim_now = datetime.date(2026, 12, 28)
+    days_left, time_status = nanjing_lbs_engine.compute_lifecycle(s_date, e_date, now_date=sim_now)
+    assert time_status == "ongoing"
+    assert days_left == 13
+
+
+def test_full_iso_and_slash_date_lifecycle_parsing():
+    """验证包含完整年份的 ISO 日期区间、点号与斜杠格式均能精准提取"""
+    # 1. ISO 破折号与波浪号区间
+    s1, e1, _, _ = nanjing_lbs_engine.parse_lifecycle_dates("2026-11-01 ~ 2026-11-05")
+    assert s1 == "2026-11-01"
+    assert e1 == "2026-11-05"
+
+    # 2. 点号与斜杠格式
+    s2, e2, _, _ = nanjing_lbs_engine.parse_lifecycle_dates("2026.11.01 - 2026.11.15")
+    assert s2 == "2026-11-01"
+    assert e2 == "2026-11-15"
+
+    s3, e3, _, _ = nanjing_lbs_engine.parse_lifecycle_dates("2026/11/01至2026/11/05")
+    assert s3 == "2026-11-01"
+    assert e3 == "2026-11-05"
+
+    # 3. 年月日 + 跨月/跨日简写
+    s4, e4, _, _ = nanjing_lbs_engine.parse_lifecycle_dates("2026年11月1日 - 15日")
+    assert s4 == "2026-11-01"
+    assert e4 == "2026-11-15"
+
+    # 4. 单日全量 ISO 日期
+    s5, e5, _, _ = nanjing_lbs_engine.parse_lifecycle_dates("2026-11-20")
+    assert s5 == "2026-11-20"
+    assert e5 == "2026-11-20"
+
+
+def test_sync_preserves_multiple_records_with_similar_titles(tmp_path):
+    """验证当多篇社媒笔记存在相同或相近标题时，禁止删库，确保 raw 表完好保留并正确聚合并入 extra_sources"""
+    db_file = tmp_path / "dedup_test.db"
+    conn = nanjing_lbs_engine.get_db_connection(db_file)
+    nanjing_lbs_engine.ensure_nj_events_table(conn)
+
+    # 插入两条标题相同但在不同场馆/日期的活动原始记录
+    conn.execute(
+        """
+        INSERT INTO nanjing_deals_events
+        (post_id, category, title, event_time, location, benefit, action_guide, summary, platform, author, publish_date, likes, status, url, obsidian_path)
+        VALUES
+        ('post_1', '🎉 南京活动', '周末免费好去处', '10月24日', '新街口德基广场', '免费', '直接前往', '德基新展', '微信公众号', '南京同城', '2026-10-20', 0, '待去/待薅', 'https://test/1', 'path1.md'),
+        ('post_2', '🎉 南京活动', '周末免费好去处', '10月25日', '建邺区南京国际博览中心', '免费领票', '扫码预约', '国博大展', '小红书', '博主小李', '2026-10-21', 10, '待去/待薅', 'https://test/2', 'path2.md')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    # 执行同步
+    nanjing_lbs_engine.migrate_and_sync_all(sqlite_path=db_file, vault_dir=tmp_path)
+
+    # 查验原始 raw 表记录绝对不能被删除
+    check_conn = nanjing_lbs_engine.get_db_connection(db_file)
+    raw_count = check_conn.execute("SELECT COUNT(*) FROM nanjing_deals_events").fetchone()[0]
+    assert raw_count == 2, f"Expected 2 raw records in nanjing_deals_events, got {raw_count} (destructive deletion bug!)"
+    check_conn.close()
+
+

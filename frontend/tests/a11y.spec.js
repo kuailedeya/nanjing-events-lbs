@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 
 test.describe('Apple HIG & WCAG Accessibility Audit (@axe-core)', () => {
   test('Page level accessibility check on initial load', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 
@@ -19,7 +19,7 @@ test.describe('Apple HIG & WCAG Accessibility Audit (@axe-core)', () => {
   });
 
   test('Detail drawer accessibility and focus trap compliance', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 
@@ -40,7 +40,7 @@ test.describe('Apple HIG & WCAG Accessibility Audit (@axe-core)', () => {
   });
 
   test('Stats modal dialog accessibility compliance', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 

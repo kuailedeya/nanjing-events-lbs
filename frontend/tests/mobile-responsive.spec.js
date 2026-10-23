@@ -4,7 +4,7 @@ test.describe('Mobile Viewport & Touch Responsiveness Suite', () => {
   test.use({ viewport: { width: 390, height: 844 } }); // iPhone 14/15 viewport
 
   test('Top Floating Island fits within mobile screen without overflow', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 
@@ -21,7 +21,7 @@ test.describe('Mobile Viewport & Touch Responsiveness Suite', () => {
   });
 
   test('Mobile filter popover can be toggled smoothly', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 
@@ -42,7 +42,7 @@ test.describe('Mobile Viewport & Touch Responsiveness Suite', () => {
   });
 
   test('Mobile floating action tools stack is accessible', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 

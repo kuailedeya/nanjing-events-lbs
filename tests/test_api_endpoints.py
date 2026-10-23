@@ -159,3 +159,71 @@ def test_cache_clear(api_client):
     assert status == 200
     assert data["ok"] is True
     assert "message" in data
+
+
+def test_batch_status_update(api_client):
+    # 剪藏两条临时活动
+    p1 = {"title": "批量测试活动一", "raw_text": "在南京玄武区举办"}
+    p2 = {"title": "批量测试活动二", "raw_text": "在南京秦淮区举办"}
+    _, r1 = api_client.post_json("/api/events/clip", p1)
+    _, r2 = api_client.post_json("/api/events/clip", p2)
+    id1, id2 = r1["event"]["id"], r2["event"]["id"]
+
+    # 批量更新为已打卡
+    batch_payload = {"ids": [id1, id2], "status": "已去/已打卡"}
+    status, res = api_client.post_json("/api/events/batch_status", batch_payload)
+    assert status == 200
+    assert res["ok"] is True
+    assert res["updated_count"] >= 2
+
+
+def test_search_with_like_wildcard(api_client):
+    # 验证搜索含 % 或 _ 的关键词不会造成 SQL 报错或全量误匹配
+    status, data = api_client.get_json("/api/events?q=100%25")
+    assert status == 200
+    assert data["ok"] is True
+    assert isinstance(data.get("items"), list)
+
+
+def test_rfc5545_line_folding_under_75_octets(api_client):
+    """验证 Apple iCalendar 订阅流每一物理行长度均不超过 75 字节（RFC 5545 严格规范）"""
+    status, headers, raw_content = api_client.get("/api/events/calendar.ics")
+    assert status == 200
+    assert "text/calendar" in headers.get("Content-Type", "")
+    lines = raw_content.split(b"\r\n")
+    for idx, l in enumerate(lines):
+        if not l:
+            continue
+        assert len(l) <= 75, f"Line {idx+1} exceeds RFC 5545 75-octet limit ({len(l)} bytes): {l.decode('utf-8', errors='ignore')}"
+
+
+def test_calendar_date_and_newest_sort_filtering(api_client):
+    """验证按指定日程日期过滤 (?date=YYYY-MM-DD) 与最新收录排序 (?sort_by=newest)"""
+    # 1. 剪藏一条指定日期区间的测试活动
+    clip_p = {
+        "title": "指定日历检索大展",
+        "raw_text": "举办时间: 2026-11-10 至 2026-11-20，在南京国际博览中心举办",
+    }
+    _, clip_res = api_client.post_json("/api/events/clip", clip_p)
+    event_id = clip_res["event"]["id"]
+
+    # 2. 查询落在该日期内的活动
+    s, in_range = api_client.get_json("/api/events?date=2026-11-15")
+    assert s == 200
+    in_ids = [it["id"] for it in in_range.get("items", [])]
+    assert event_id in in_ids
+
+    # 3. 查询不在该日期内的活动
+    s2, out_range = api_client.get_json("/api/events?date=2026-12-01")
+    assert s2 == 200
+    out_ids = [it["id"] for it in out_range.get("items", [])]
+    assert event_id not in out_ids
+
+    # 4. 验证 sort_by=newest
+    s3, sorted_res = api_client.get_json("/api/events?sort_by=newest")
+    assert s3 == 200
+    items = sorted_res.get("items", [])
+    if len(items) >= 2:
+        for i in range(len(items) - 1):
+            assert items[i].get("updated_at", "") >= items[i + 1].get("updated_at", "")
+

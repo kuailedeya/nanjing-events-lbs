@@ -28,6 +28,7 @@ import json
 import math
 import os
 import re
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -293,13 +294,19 @@ def to_geojson_feature_collection(items: List[Dict[str, Any]]) -> Dict[str, Any]
     features = []
     for it in items:
         props = {k: v for k, v in it.items() if k != "geom"}
+        try:
+            c_lng = float(it.get("lng", 118.7977))
+            c_lat = float(it.get("lat", 32.0482))
+        except (ValueError, TypeError):
+            c_lng, c_lat = 118.7977, 32.0482
+
         features.append(
             {
                 "type": "Feature",
                 "id": it["id"],
                 "geometry": {
                     "type": "Point",
-                    "coordinates": [it["lng"], it["lat"]],
+                    "coordinates": [c_lng, c_lat],
                 },
                 "properties": props,
             }
@@ -351,7 +358,12 @@ class EventCacheManager:
     def get_by_id(self, item_id: str) -> Optional[Dict[str, Any]]:
         self.get_all()
         with self._lock:
-            return self._id_map.get(item_id)
+            item = self._id_map.get(item_id)
+        if item is None:
+            self.get_all(force_refresh=True)
+            with self._lock:
+                item = self._id_map.get(item_id)
+        return item
 
     def get_stats(self) -> Dict[str, Any]:
         self.get_all()
@@ -484,7 +496,7 @@ class EventCacheManager:
                 "source_url": d.get("source_url") or "",
                 "url": d.get("source_url") or "",
                 "obsidian_path": obs_path,
-                "obsidian_uri": f"obsidian://open?vault=IOT&file={quote(obs_path)}",
+                "obsidian_uri": f"obsidian://open?vault={quote(VAULT_DIR.name or 'IOT')}&file={quote(obs_path)}" if obs_path else "",
                 "status": clean_text(status),
                 "extra_sources": extra_sources,
                 "updated_at": d.get("updated_at") or "",
@@ -578,7 +590,16 @@ class SyncTaskManager:
         timeout_sec = int(os.environ.get("SYNC_SUBPROCESS_TIMEOUT", "180"))
         try:
             if mode == "full" or keyword:
-                cmd = [sys.executable, str(SYNC_SCRIPT), "--limit", str(limit)]
+                cmd = [
+                    sys.executable,
+                    str(SYNC_SCRIPT),
+                    "--limit",
+                    str(limit),
+                    "--vault",
+                    str(VAULT_DIR),
+                    "--db-path",
+                    str(SQLITE_PATH),
+                ]
                 if keyword:
                     cmd.extend(["--keyword", keyword])
                 proc = subprocess.run(
@@ -637,6 +658,10 @@ class DailyScheduler(threading.Thread):
         self.target_minute = target_minute
         self.last_run_time: Optional[str] = None
         self.next_run_dt: datetime.datetime = self._calc_next_run()
+        self._stop_event = threading.Event()
+
+    def stop(self) -> None:
+        self._stop_event.set()
 
     def _calc_next_run(self) -> datetime.datetime:
         now = datetime.datetime.now()
@@ -659,7 +684,7 @@ class DailyScheduler(threading.Thread):
         }
 
     def run(self) -> None:
-        while True:
+        while not self._stop_event.is_set():
             try:
                 now = datetime.datetime.now()
                 if now >= self.next_run_dt:
@@ -672,7 +697,7 @@ class DailyScheduler(threading.Thread):
                     self.next_run_dt = self._calc_next_run()
             except Exception as e:
                 print(f"[DailyScheduler] 定时调度运行异常 (已自动恢复守护): {e}", flush=True)
-            time.sleep(20)
+            self._stop_event.wait(20.0)
 
 
 DAILY_SCHEDULER = DailyScheduler(target_hour=12, target_minute=0)
@@ -741,6 +766,78 @@ def update_item_status(post_id: str, new_status: str) -> Tuple[bool, str]:
 
     EVENT_CACHE.invalidate()
     return True, "状态更新成功"
+
+
+def batch_update_item_status(post_ids: List[str], new_status: str) -> Tuple[int, str]:
+    """批量更新活动状态：单事务合并更新，批量刷盘 Markdown，单次失效缓存，杜绝雪崩与锁冲突"""
+    if not post_ids:
+        return 0, "活动 ID 列表为空"
+    METRICS.record_status_update()
+    conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
+    updated_count = 0
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    obs_paths: List[str] = []
+    try:
+        with conn:
+            for pid in post_ids:
+                r1 = conn.execute(
+                    "UPDATE nj_events SET status = ?, updated_at = ? WHERE id = ?",
+                    (new_status, now_str, pid),
+                ).rowcount
+                conn.execute(
+                    "UPDATE nanjing_deals_events SET status = ? WHERE post_id = ?",
+                    (new_status, pid),
+                )
+                if r1 > 0:
+                    updated_count += 1
+
+            for i in range(0, len(post_ids), 500):
+                chunk = post_ids[i : i + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = conn.execute(
+                    f"SELECT obsidian_path FROM nj_events WHERE id IN ({placeholders})", chunk
+                ).fetchall()
+                obs_paths.extend([r["obsidian_path"] for r in rows if r["obsidian_path"]])
+                if len(obs_paths) < len(chunk):
+                    raw_rows = conn.execute(
+                        f"SELECT obsidian_path FROM nanjing_deals_events WHERE post_id IN ({placeholders})", chunk
+                    ).fetchall()
+                    for mr in raw_rows:
+                        if mr["obsidian_path"] and mr["obsidian_path"] not in obs_paths:
+                            obs_paths.append(mr["obsidian_path"])
+    finally:
+        conn.close()
+
+    if VAULT_DIR.exists():
+        resolved_vault = VAULT_DIR.resolve()
+        for p in obs_paths:
+            try:
+                safe_rel = p.lstrip("/\\")
+                md_file = (resolved_vault / safe_rel).resolve()
+                if md_file.is_relative_to(resolved_vault) and md_file.exists():
+                    txt = md_file.read_text(encoding="utf-8")
+                    m_yaml = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", txt, re.S)
+                    if m_yaml:
+                        fm = yaml.safe_load(m_yaml.group(1)) or {}
+                        body = m_yaml.group(2)
+                        fm["status"] = new_status
+                        fm["updated_at"] = now_str
+                        new_yaml = yaml.safe_dump(
+                            fm, allow_unicode=True, sort_keys=False, default_flow_style=False
+                        ).strip()
+                        new_content = f"---\n{new_yaml}\n---\n\n{body.lstrip()}"
+                    else:
+                        new_content = f"---\nstatus: {new_status}\nupdated_at: '{now_str}'\n---\n\n{txt}"
+
+                    with tempfile.NamedTemporaryFile("w", dir=md_file.parent, delete=False, encoding="utf-8") as tf:
+                        tf.write(new_content)
+                        temp_name = tf.name
+                    os.replace(temp_name, md_file)
+            except Exception:
+                pass
+
+    EVENT_CACHE.invalidate()
+    return updated_count, "批量状态更新成功"
 
 
 # ==============================================================================
@@ -1004,6 +1101,36 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
 # ==============================================================================
 # 7. Apple 日历订阅格式生成器 (RFC 5545 iCalendar Feed)
 # ==============================================================================
+def fold_ical_line(line: str, max_bytes: int = 75) -> str:
+    """RFC 5545 section 3.1 兼容的日历超长行安全折行 (每行最多 75 字节，UTF-8 边界安全)"""
+    encoded = line.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return line
+    folded_parts = []
+    remaining = encoded
+    first = True
+    while remaining:
+        limit = max_bytes if first else max_bytes - 1
+        if len(remaining) <= limit:
+            chunk = remaining.decode("utf-8", errors="ignore")
+            folded_parts.append(chunk if first else " " + chunk)
+            break
+        cut = limit
+        while cut > 0:
+            try:
+                chunk = remaining[:cut].decode("utf-8")
+                break
+            except UnicodeDecodeError:
+                cut -= 1
+        if cut == 0:
+            cut = limit
+            chunk = remaining[:cut].decode("utf-8", errors="ignore")
+        folded_parts.append(chunk if first else " " + chunk)
+        remaining = remaining[cut:]
+        first = False
+    return "\r\n".join(folded_parts)
+
+
 def generate_ical_feed(events: List[Dict[str, Any]]) -> str:
     """生成原生兼容 iOS / macOS 日历的 RFC 5545 iCalendar 标准订阅流"""
     now_dt = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -1108,7 +1235,7 @@ def generate_ical_feed(events: List[Dict[str, Any]]) -> str:
         )
 
     lines.append("END:VCALENDAR")
-    return "\r\n".join(lines) + "\r\n"
+    return "\r\n".join(fold_ical_line(line) for line in lines) + "\r\n"
 
 
 # ==============================================================================
@@ -1130,7 +1257,9 @@ def filter_events(items: List[Dict[str, Any]], query_params: Dict[str, List[str]
     status = (query_params.get("status") or ["ALL"])[0]
     is_free_str = (query_params.get("is_free") or [""])[0].lower()
     tag = (query_params.get("tag") or [""])[0].strip()
-    q = (query_params.get("q") or [""])[0].strip().lower()
+    q = (query_params.get("q") or [""])[0].strip()
+    target_date = (query_params.get("date") or query_params.get("calendar_date") or [""])[0].strip().lower()
+    target_date = (query_params.get("date") or query_params.get("calendar_date") or [""])[0].strip()
 
     include_expired = (query_params.get("include_expired") or ["0"])[0].lower() in ("1", "true", "yes")
     time_status_filter = (query_params.get("time_status") or ["ALL"])[0].strip().lower()
@@ -1193,6 +1322,13 @@ def filter_events(items: List[Dict[str, Any]], query_params: Dict[str, List[str]
         if tag and tag not in it_copy.get("tags", []):
             continue
 
+        # 4.1 指定活动日期过滤 (start_date <= target_date <= end_date)
+        if target_date and re.match(r"^\d{4}-\d{2}-\d{2}$", target_date):
+            s_d = it_copy.get("start_date") or ""
+            e_d = it_copy.get("end_date") or ""
+            if s_d and e_d and not (s_d <= target_date <= e_d):
+                continue
+
         # 5. 空间包围盒粗筛
         if use_spatial:
             if not (min_lat <= it_copy["lat"] <= max_lat and min_lng <= it_copy["lng"] <= max_lng):
@@ -1229,8 +1365,9 @@ def filter_events(items: List[Dict[str, Any]], query_params: Dict[str, List[str]
         out.sort(key=lambda x: x.get("distance_km", 9999.0), reverse=(order == "desc"))
     elif sort_by == "days_left":
         out.sort(key=lambda x: x.get("days_left", 9999), reverse=(order == "desc"))
-    elif sort_by == "updated_at":
-        out.sort(key=lambda x: x.get("updated_at", ""), reverse=(order == "desc"))
+    elif sort_by in ("updated_at", "newest"):
+        is_desc = (order != "asc") if "order" in query_params else True
+        out.sort(key=lambda x: x.get("updated_at", ""), reverse=is_desc)
     elif sort_by == "title":
         out.sort(key=lambda x: x.get("title", ""), reverse=(order == "desc"))
     elif order in ("desc", "reverse", "逆序"):
@@ -1254,13 +1391,14 @@ def query_events_from_db(query_params: Dict[str, List[str]]) -> List[Dict[str, A
     is_free_str = (query_params.get("is_free") or [""])[0].lower()
     tag = (query_params.get("tag") or [""])[0].strip()
     q = (query_params.get("q") or [""])[0].strip()
+    target_date = (query_params.get("date") or query_params.get("calendar_date") or [""])[0].strip()
 
     include_expired = (query_params.get("include_expired") or ["0"])[0].lower() in ("1", "true", "yes")
     time_status_filter = (query_params.get("time_status") or ["ALL"])[0].strip().lower()
 
     center_lng_s = (query_params.get("lng") or [""])[0]
     center_lat_s = (query_params.get("lat") or [""])[0]
-    radius_s = (query_params.get("radius_km") or ["0"])[0]
+    radius_s = (query_params.get("radius_km") or query_params.get("radius") or ["0"])[0]
 
     use_spatial = False
     center_lng, center_lat, radius_km = 118.7842, 32.0418, 0.0
@@ -1304,13 +1442,18 @@ def query_events_from_db(query_params: Dict[str, List[str]]) -> List[Dict[str, A
         sql_parts.append("AND (lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?)")
         sql_args.extend([min_lat, max_lat, min_lng, max_lng])
 
-    # 关键词检索下推至 SQL 参数化 LIKE
+    # 关键词检索下推至 SQL 参数化 LIKE 并转义通配符
     if q:
+        escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        wildcard = f"%{escaped_q}%"
         sql_parts.append(
-            "AND (title LIKE ? OR summary LIKE ? OR address LIKE ? OR action_guide LIKE ? OR benefit LIKE ?)"
+            "AND (title LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' OR action_guide LIKE ? ESCAPE '\\' OR benefit LIKE ? ESCAPE '\\')"
         )
-        wildcard = f"%{q}%"
         sql_args.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
+
+    if target_date and re.match(r"^\d{4}-\d{2}-\d{2}$", target_date):
+        sql_parts.append("AND (start_date <= ? AND end_date >= ?)")
+        sql_args.extend([target_date, target_date])
 
     sql_parts.append("ORDER BY updated_at DESC")
     full_sql = " ".join(sql_parts)
@@ -1401,8 +1544,9 @@ def query_events_from_db(query_params: Dict[str, List[str]]) -> List[Dict[str, A
         out.sort(key=lambda x: x.get("distance_km", 9999.0), reverse=(order == "desc"))
     elif sort_by == "days_left":
         out.sort(key=lambda x: x.get("days_left", 9999), reverse=(order == "desc"))
-    elif sort_by == "updated_at":
-        out.sort(key=lambda x: x.get("updated_at", ""), reverse=(order == "desc"))
+    elif sort_by in ("updated_at", "newest"):
+        is_desc = (order != "asc") if "order" in query_params else True
+        out.sort(key=lambda x: x.get("updated_at", ""), reverse=is_desc)
     elif sort_by == "title":
         out.sort(key=lambda x: x.get("title", ""), reverse=(order == "desc"))
     elif order in ("desc", "reverse", "逆序"):
@@ -2019,7 +2163,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 parts = parsed.path.strip("/").split("/")
                 if len(parts) >= 3:
                     post_id = parts[2]
-            status = payload.get("status", "待去/待薅")
+            status = (str(payload.get("status") or "")).strip() or "待去/待薅"
             ok, msg = update_item_status(post_id, status)
             self._send_json({"ok": ok, "message": msg, "id": post_id, "post_id": post_id, "status": status})
             return
@@ -2029,16 +2173,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         if parsed.path == "/api/events/batch_status":
             ids = payload.get("ids") or []
-            status = payload.get("status", "已去/已打卡")
+            status = (str(payload.get("status") or "")).strip() or "已去/已打卡"
             if not isinstance(ids, list) or not ids:
                 self._send_json({"ok": False, "error": "请提供待更新的活动 id 列表 (ids: [...])"}, 400)
                 return
-            success_count = 0
-            for pid in ids:
-                ok, _ = update_item_status(pid, status)
-                if ok:
-                    success_count += 1
-            self._send_json({"ok": True, "updated_count": success_count, "status": status})
+            success_count, msg = batch_update_item_status(ids, status)
+            self._send_json({"ok": True, "updated_count": success_count, "status": status, "message": msg})
             return
 
         # ----------------------------------------------------------------------
@@ -2230,7 +2370,26 @@ def main() -> None:
     print(f"  - Workers Pool:  Bounded 32 Worker Threads (Socket Timeout: 15s)", flush=True)
     print(f"  - Max Body Size: {MAX_BODY_SIZE // (1024 * 1024)} MB (Anti-DoS Protected)", flush=True)
     print("=" * 64, flush=True)
-    server.serve_forever()
+
+    def handle_sig(sig, frame):
+        print("\n[*] 正在安全停止 Nanjing LBS Backend 服务...", flush=True)
+        DAILY_SCHEDULER.stop()
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    try:
+        signal.signal(signal.SIGINT, handle_sig)
+        signal.signal(signal.SIGTERM, handle_sig)
+    except Exception:
+        pass
+
+    try:
+        server.serve_forever()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        DAILY_SCHEDULER.stop()
+        server.server_close()
+        print("[✓] 服务已安全停止，套接字与后台调度器已平稳释放。", flush=True)
 
 
 if __name__ == "__main__":

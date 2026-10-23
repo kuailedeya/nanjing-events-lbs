@@ -300,26 +300,69 @@ def parse_lifecycle_dates(
         d_safe = max(1, min(max_day, d))
         return f"{y}-{m_safe:02d}-{d_safe:02d}"
 
-    # 模式1: 完整范围 M1月D1日 - M2月D2日 或 M1.D1 - M2.D2 或 M1/D1 - M2/D2
-    m1 = re.findall(r"(\d{1,2})\s*[月./]\s*(\d{1,2})\s*日?", txt)
+    # 模式0: 包含完整 4 位年份的 ISO/标准日期 (如 2026-11-01 ~ 2026-11-05, 2026.11.01-11.15, 2026年11月1日-15日)
+    full_dates = re.findall(r"(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})\s*日?", txt)
+    if len(full_dates) >= 2:
+        y1, m1, d1 = int(full_dates[0][0]), int(full_dates[0][1]), int(full_dates[0][2])
+        y2, m2, d2 = int(full_dates[1][0]), int(full_dates[1][1]), int(full_dates[1][2])
+        s_date = _format_safe_date(y1, m1, d1)
+        e_date = _format_safe_date(y2, m2, d2)
+        if e_date < s_date:
+            e_date = s_date
+        return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T18:00:00+08:00"
+    if len(full_dates) == 1:
+        y1, m1, d1 = int(full_dates[0][0]), int(full_dates[0][1]), int(full_dates[0][2])
+        m_after = re.search(
+            r"[-—~至–]\s*(?:(\d{1,2})\s*[-/.月]\s*)?(\d{1,2})\s*日?",
+            txt[txt.find(full_dates[0][0]) :],
+        )
+        if m_after:
+            m2 = int(m_after.group(1)) if m_after.group(1) else m1
+            d2 = int(m_after.group(2))
+            e_year = y1 + 1 if m2 < m1 else y1
+            s_date = _format_safe_date(y1, m1, d1)
+            e_date = _format_safe_date(e_year, m2, d2)
+            if e_date < s_date:
+                e_date = s_date
+            return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T18:00:00+08:00"
+
+        s_date = _format_safe_date(y1, m1, d1)
+        if any(k in txt for k in ["起", "开园", "开展", "启幕", "开幕"]):
+            _, last_d = calendar.monthrange(y1, max(1, min(12, m1)))
+            e_date = _format_safe_date(y1, m1, last_d)
+        elif any(k in txt for k in ["截止", "结束", "前"]):
+            s_date = _format_safe_date(y1, m1, 1)
+            e_date = _format_safe_date(y1, m1, d1)
+        else:
+            e_date = s_date
+        return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T20:00:00+08:00"
+
+    # 模式1: 完整范围 M1月D1日 - M2月D2日 或 M1.D1 - M2.D2 或 M1/D1 - M2/D2 或 M1-D1 - M2-D2
+    m1 = re.findall(r"(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?", txt)
     if len(m1) >= 2:
         mon1, day1 = int(m1[0][0]), int(m1[0][1])
         mon2, day2 = int(m1[1][0]), int(m1[1][1])
+        # 智能支持跨年展会/冬季活动 (如 12月25日-1月10日，结束年份自动递增)
+        e_year = year + 1 if mon2 < mon1 else year
         s_date = _format_safe_date(year, mon1, day1)
-        e_date = _format_safe_date(year, mon2, day2)
+        e_date = _format_safe_date(e_year, mon2, day2)
+        if e_date < s_date:
+            e_date = s_date
         return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T18:00:00+08:00"
 
     # 模式2: 同月跨日 M月D1日 - D2日 (如 10月23日—25日, 10月15日-30日)
-    m2 = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日?\s*[-—~至–]\s*(\d{1,2})\s*日?", txt)
+    m2 = re.search(r"(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?\s*[-—~至–]\s*(\d{1,2})\s*日?", txt)
     if m2:
         mon = int(m2.group(1))
         d1, d2 = int(m2.group(2)), int(m2.group(3))
+        if d2 < d1:
+            d2 = d1
         s_date = _format_safe_date(year, mon, d1)
         e_date = _format_safe_date(year, mon, d2)
         return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T18:00:00+08:00"
 
     # 模式3: 单日 M月D日 (如 10月18日, 10月23日)
-    m3 = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日?", txt)
+    m3 = re.search(r"(\d{1,2})\s*[月./]\s*(\d{1,2})\s*日?", txt)
     if m3:
         mon = int(m3.group(1))
         d = int(m3.group(2))
@@ -333,7 +376,7 @@ def parse_lifecycle_dates(
         return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T20:00:00+08:00"
 
     # 模式4: 截止型 (如 10月31日截止)
-    m4 = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日?\s*截止", txt)
+    m4 = re.search(r"(\d{1,2})\s*[月./\-]\s*(\d{1,2})\s*日?\s*截止", txt)
     if m4:
         mon = int(m4.group(1))
         d = int(m4.group(2))
@@ -380,6 +423,9 @@ def compute_lifecycle(
     except Exception:
         s_date = now_date
         e_date = now_date + datetime.timedelta(days=7)
+
+    if e_date < s_date:
+        e_date = s_date
 
     days_left = (e_date - now_date).days
     if days_left < 0:
@@ -450,10 +496,10 @@ def are_events_duplicate(item_a: Dict[str, Any], item_b: Dict[str, Any]) -> bool
         return False
 
     today_iso = datetime.date.today().isoformat()
-    s_a = (item_a.get("start_date") or item_a.get("start_time") or today_iso)[:10]
-    e_a = (item_a.get("end_date") or item_a.get("end_time") or today_iso)[:10]
-    s_b = (item_b.get("start_date") or item_b.get("start_time") or today_iso)[:10]
-    e_b = (item_b.get("end_date") or item_b.get("end_time") or today_iso)[:10]
+    s_a = ((item_a.get("start_date") or item_a.get("start_time") or "").strip()[:10]) or today_iso
+    e_a = ((item_a.get("end_date") or item_a.get("end_time") or "").strip()[:10]) or s_a
+    s_b = ((item_b.get("start_date") or item_b.get("start_time") or "").strip()[:10]) or today_iso
+    e_b = ((item_b.get("end_date") or item_b.get("end_time") or "").strip()[:10]) or s_b
     if e_a < s_b or e_b < s_a:
         return False
 
@@ -553,7 +599,7 @@ def bounding_box_deg(lat: float, lng: float, radius_km: float) -> Tuple[float, f
 
 
 def get_db_connection(db_path: Path = SQLITE_PATH) -> sqlite3.Connection:
-    """获取优化配置后的 SQLite 连接（WAL 模式 + 内存临时表 + 10s 忙锁等待）"""
+    """获取优化配置后的 SQLite 连接（WAL 模式 + 自动检查点 + 10s 忙锁等待）"""
     if isinstance(db_path, str):
         db_path = Path(db_path)
     try:
@@ -564,7 +610,8 @@ def get_db_connection(db_path: Path = SQLITE_PATH) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
-    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA busy_timeout = 10000;")
+    conn.execute("PRAGMA wal_autocheckpoint = 1000;")
     conn.execute("PRAGMA cache_size = -64000;")
     conn.execute("PRAGMA temp_store = MEMORY;")
     return conn
@@ -573,7 +620,8 @@ def get_db_connection(db_path: Path = SQLITE_PATH) -> sqlite3.Connection:
 def ensure_nj_events_table(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
-    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA busy_timeout = 10000;")
+    conn.execute("PRAGMA wal_autocheckpoint = 1000;")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS nanjing_deals_events (
@@ -645,7 +693,9 @@ def ensure_nj_events_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def migrate_and_sync_all() -> List[Dict[str, Any]]:
+def migrate_and_sync_all(
+    sqlite_path: Optional[Path] = None, vault_dir: Optional[Path] = None
+) -> List[Dict[str, Any]]:
     """
     将 nanjing_deals_events 与 Obsidian 笔记全量同步升级至 nj_events 表：
     1. 解析生命周期精确起止日期 (start_date / end_date)
@@ -653,12 +703,14 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
     3. 把 district / lng / lat / sub_category / start_date / end_date 写回每篇 Obsidian .md 的 YAML 属性
     4. 采用安全增量 Upsert 事务，严禁无条件删库或因外部文件丢失而连带删库。
     """
-    conn = get_db_connection(SQLITE_PATH)
+    target_sqlite = Path(sqlite_path) if sqlite_path else SQLITE_PATH
+    target_vault = Path(vault_dir) if vault_dir else VAULT_DIR
+    conn = get_db_connection(target_sqlite)
     ensure_nj_events_table(conn)
 
-    vault_accessible = VAULT_DIR.exists()
+    vault_accessible = target_vault.exists()
     if not vault_accessible:
-        print(f"[!] Warning: VAULT_DIR ({VAULT_DIR}) 不存在或脱机，跳过本地 Markdown 检查与回写，完全基于 SQLite 现有数据安全同步。")
+        print(f"[!] Warning: VAULT_DIR ({target_vault}) 不存在或脱机，跳过本地 Markdown 检查与回写，完全基于 SQLite 现有数据安全同步。")
 
     rows = conn.execute("SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC").fetchall()
     if not rows:
@@ -666,7 +718,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
             from nanjing_seeds import NANJING_COMPREHENSIVE_SEEDS
             import social_obsidian_sync
             print(f"[*] 发现数据库为空，自动载入 {len(NANJING_COMPREHENSIVE_SEEDS)} 条基准全域活动数据...")
-            db = social_obsidian_sync.ObsidianSummaryDB(sqlite_path=SQLITE_PATH)
+            db = social_obsidian_sync.ObsidianSummaryDB(vault_dir=target_vault, sqlite_path=target_sqlite)
             for s in NANJING_COMPREHENSIVE_SEEDS:
                 db.save_record(s)
             rows = conn.execute("SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC").fetchall()
@@ -676,7 +728,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     raw_candidates: List[Dict[str, Any]] = []
     seen_paths = set()
-    seen_titles = set()
+    seen_post_ids = set()
     noise_keywords = ("赵露思", "横店开机", "上海好物", "机器压平", "全国展会2026排期表(10-12月)", "盒马新疆季")
 
     for r in rows:
@@ -684,7 +736,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
         post_id = d["post_id"]
         title = d["title"]
         obsidian_path = d.get("obsidian_path") or ""
-        md_file = VAULT_DIR / obsidian_path
+        md_file = target_vault / obsidian_path
 
         # 仅清理明确命中的非南京无意义纯噪声
         if any(nk in title for nk in noise_keywords):
@@ -696,12 +748,11 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                     pass
             continue
 
-        if (obsidian_path and obsidian_path in seen_paths) or title in seen_titles:
-            conn.execute("DELETE FROM nanjing_deals_events WHERE post_id = ?", (post_id,))
+        if post_id in seen_post_ids or (obsidian_path and obsidian_path in seen_paths):
             continue
+        seen_post_ids.add(post_id)
         if obsidian_path:
             seen_paths.add(obsidian_path)
-        seen_titles.add(title)
         category = d["category"]
         event_time_text = d.get("event_time") or "近期同城"
         address = d.get("location") or "南京主城区"
@@ -777,7 +828,7 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
             except Exception:
                 pass
 
-        vault_name = VAULT_DIR.name or "IOT"
+        vault_name = target_vault.name or "IOT"
         raw_candidates.append(
             {
                 "id": post_id,

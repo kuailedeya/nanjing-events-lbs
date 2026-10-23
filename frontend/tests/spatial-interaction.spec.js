@@ -2,25 +2,25 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Spatial Exploration & Apple HIG Interaction Suite', () => {
   test('Search input debouncing and results filtering', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
-    await page.locator('#cards-container').waitFor();
+    await page.locator('#cards-container article').first().waitFor();
 
     const searchInput = page.locator('input[placeholder*="搜索"]');
     await searchInput.fill('动漫');
     
     // Wait for 200ms debounce
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
 
-    const cards = page.locator('#cards-container .group');
+    const cards = page.locator('#cards-container article');
     const count = await cards.count();
     expect(count).toBeGreaterThan(0);
 
     // Click clear button
-    const clearBtn = page.locator('header button:has(svg.lucide-x)');
+    const clearBtn = page.locator('header button[aria-label="清空搜索"]');
     if (await clearBtn.isVisible()) {
       await clearBtn.click();
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(400);
       const resetCount = await cards.count();
       expect(resetCount).toBeGreaterThan(count);
     }
@@ -42,7 +42,7 @@ test.describe('Spatial Exploration & Apple HIG Interaction Suite', () => {
   });
 
   test('Dark mode toggle applies theme-dark frosted glass and native tiles', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
     await page.locator('#cards-container').waitFor();
 
@@ -59,11 +59,11 @@ test.describe('Spatial Exploration & Apple HIG Interaction Suite', () => {
   });
 
   test('Keyboard navigation: Enter key opens detail drawer from card', async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('domcontentloaded');
-    await page.locator('#cards-container').waitFor();
+    const firstCard = page.locator('#cards-container article').first();
+    await firstCard.waitFor();
 
-    const firstCard = page.locator('#cards-container .group').first();
     await firstCard.focus();
     await page.keyboard.press('Enter');
     await page.waitForTimeout(600);

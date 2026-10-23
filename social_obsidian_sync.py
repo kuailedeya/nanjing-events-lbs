@@ -21,6 +21,7 @@ r"""
 import argparse
 import datetime
 import hashlib
+import html
 import json
 import os
 import random
@@ -161,7 +162,9 @@ def extract_structured_fields(title: str, raw_text: str, category: str, platform
       - summary: 70字以内一句话核心总结（供数据库表格直接阅读）
       - key_points: List[str] 3-5条结构化要点
     """
-    clean_text = re.sub(r"!\[.*?\]\(.*?\)", "", raw_text)
+    clean_text = html.unescape(raw_text)
+    clean_text = re.sub(r"<[^>]+>", " ", clean_text)
+    clean_text = re.sub(r"!\[.*?\]\(.*?\)", "", clean_text)
     clean_text = re.sub(r"https?://\S+", "", clean_text)
     lines = [re.sub(r"\s+", " ", ln).strip(" *#-|>·") for ln in clean_text.splitlines()]
     lines = [ln for ln in lines if len(ln) >= 4 and not any(noise in ln for noise in ["未经授权", "不得搬抄", "追究其法律责任", "点击蓝字关注", "向下滑动查看", "长按识别二维码"])]
@@ -170,10 +173,11 @@ def extract_structured_fields(title: str, raw_text: str, category: str, platform
     # 1. 提取时间 (event_time)
     event_time = "近期进行中"
     time_patterns = [
-        r"((?:202\d年?)?\d{1,2}月\d{1,2}日?\s*[-~至—–]\s*(?:\d{1,2}月)?\d{1,2}日?)",
+        r"((?:202\d[-/.年])?\d{1,2}[-/.月]\d{1,2}日?\s*[-~至—–]\s*(?:(?:202\d[-/.年])?\d{1,2}[-/.月])?\d{1,2}日?)",
+        r"((?:202\d[-/.年])\d{1,2}[-/.月]\d{1,2}日?)",
         r"(\d{1,2}月\d{1,2}日\s*[-~至—–]\s*(?:\d{1,2}月)?\d{1,2}日)",
-        r"(10/\d{1,2}\s*[-~至]\s*10/\d{1,2})",
-        r"(10\.\d{1,2}\s*[-~至]\s*10\.\d{1,2})",
+        r"(\d{1,2}/\d{1,2}\s*[-~至—–]\s*(?:\d{1,2}/)?\d{1,2})",
+        r"(\d{1,2}\.\d{1,2}\s*[-~至—–]\s*(?:\d{1,2}\.)?\d{1,2})",
         r"(\d{1,2}月\d{1,2}日(?:起|开园|开幕|开展|截止))",
         r"(每周[五六日末]+(?:晚|上午|下午)?)",
         r"(\d{1,2}月\d{1,2}日)",
@@ -378,7 +382,7 @@ class NanjingDealScraper:
                 # 过滤无关的政务/老年义工/外地纯广告
                 if any(bad in title for bad in ["义工", "老年公寓", "疫情", "确诊", "贵阳", "成都", "深圳", "上海", "昆山", "北京", "广州"]):
                     continue
-                norm_title = re.sub(r"\W+", "", title)[:16]
+                norm_title = re.sub(r"\W+", "", title)
                 if norm_title in seen_titles:
                     continue
                 seen_titles.add(norm_title)
@@ -399,9 +403,10 @@ class NanjingDealScraper:
                 category = classify_item(title, full_source_text, hint_cat=hint_cat)
                 extracted = extract_structured_fields(title, full_source_text, category, platform)
 
+                uid_seed = f"{norm_title}_{mp_url}_{ts}" if mp_url else f"{norm_title}_{ts}"
                 records.append(
                     {
-                        "post_id": "item_" + hashlib.md5(norm_title.encode("utf-8")).hexdigest()[:12],
+                        "post_id": "item_" + hashlib.md5(uid_seed.encode("utf-8")).hexdigest()[:12],
                         "title": title,
                         "platform": platform,
                         "category": category,
@@ -439,7 +444,7 @@ class NanjingDealScraper:
                 else f"https://www.xiaohongshu.com/explore?channel_id={ch}"
             )
             try:
-                r = requests.get(
+                r = self.session.get(
                     url,
                     headers={"User-Agent": USER_AGENT, "Accept-Language": "zh-CN,zh;q=0.9"},
                     timeout=8,
@@ -829,8 +834,10 @@ views:
             except OSError:
                 pass
 
-        conn = sqlite3.connect(self.sqlite_path)
+        conn = sqlite3.connect(self.sqlite_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA busy_timeout = 10000;")
         all_rows = conn.execute(
             "SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC"
         ).fetchall()
@@ -938,6 +945,9 @@ def main() -> None:
     parser.add_argument("--db-path", type=str, default=str(DEFAULT_SQLITE_PATH), help="SQLite 数据库文件路径")
     args = parser.parse_args()
 
+    os.environ["DB_PATH"] = str(args.db_path)
+    os.environ["VAULT_DIR"] = str(args.vault)
+
     scraper = NanjingDealScraper()
     db = ObsidianSummaryDB(vault_dir=Path(args.vault), sqlite_path=Path(args.db_path))
 
@@ -982,7 +992,7 @@ def main() -> None:
     db.build_base_and_dashboard()
     try:
         import nanjing_lbs_engine
-        nanjing_lbs_engine.migrate_and_sync_all()
+        nanjing_lbs_engine.migrate_and_sync_all(sqlite_path=Path(args.db_path), vault_dir=Path(args.vault))
     except Exception as e:
         print(f"[!] LBS 空间同步提示: {e}")
     print(f"[✓] 全部提炼完成！共入库 {len(wx_records) + len(xhs_records)} 条纯结构化摘要记录。")

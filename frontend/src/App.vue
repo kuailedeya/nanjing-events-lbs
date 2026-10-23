@@ -46,7 +46,7 @@
               'px-1.5 sm:px-2.5 py-1 rounded-lg transition-all text-[11px] sm:text-xs cursor-pointer',
               activeCategory === cat.value
                 ? 'bg-white text-slate-900 shadow-[0_2px_6px_rgba(0,0,0,0.1)] font-semibold'
-                : 'text-slate-500 hover:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900'
             ]"
           >
             {{ cat.label }}
@@ -59,7 +59,7 @@
             @click="venueFilter = 'ALL'"
             :class="[
               'px-2 py-1 rounded-lg transition-all text-xs cursor-pointer',
-              venueFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+              venueFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
             ]"
           >
             全览
@@ -68,7 +68,7 @@
             @click="venueFilter = 'PHYSICAL'"
             :class="[
               'px-2 py-1 rounded-lg transition-all text-xs cursor-pointer flex items-center gap-1',
-              venueFilter === 'PHYSICAL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+              venueFilter === 'PHYSICAL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
             ]"
           >
             <span class="w-1.5 h-1.5 rounded-full bg-[#007AFF]"></span>
@@ -78,7 +78,7 @@
             @click="venueFilter = 'ONLINE'"
             :class="[
               'px-2 py-1 rounded-lg transition-all text-xs cursor-pointer flex items-center gap-1',
-              venueFilter === 'ONLINE' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+              venueFilter === 'ONLINE' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
             ]"
           >
             <span class="w-1.5 h-1.5 rounded-full bg-[#34C759]"></span>
@@ -134,15 +134,15 @@
         <div class="flex lg:hidden items-center p-0.5 bg-black/[0.04] rounded-lg text-xs font-medium text-slate-600">
           <button
             @click="venueFilter = 'ALL'"
-            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer', venueFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500']"
+            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer', venueFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600']"
           >全览</button>
           <button
             @click="venueFilter = 'PHYSICAL'"
-            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer flex items-center gap-1', venueFilter === 'PHYSICAL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500']"
+            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer flex items-center gap-1', venueFilter === 'PHYSICAL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600']"
           ><span class="w-1.5 h-1.5 rounded-full bg-[#007AFF]"></span>线下</button>
           <button
             @click="venueFilter = 'ONLINE'"
-            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer flex items-center gap-1', venueFilter === 'ONLINE' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500']"
+            :class="['px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer flex items-center gap-1', venueFilter === 'ONLINE' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600']"
           ><span class="w-1.5 h-1.5 rounded-full bg-[#34C759]"></span>羊毛</button>
         </div>
 
@@ -167,7 +167,7 @@
               @click="timeFilter = tf.value"
               :class="[
                 'px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer',
-                timeFilter === tf.value ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                timeFilter === tf.value ? 'bg-white text-slate-900 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
               ]"
             >
               {{ tf.label }}
@@ -222,7 +222,7 @@
 
       <!-- 空间瞬移片区栏 (通透圆角白胶囊) -->
       <div class="mt-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar pointer-events-auto">
-        <span class="px-2 py-0.5 rounded-full text-[10px] font-medium text-slate-500 bg-white/80 backdrop-blur-md border border-white/80 shadow-2xs shrink-0 flex items-center gap-1">
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-medium text-slate-600 bg-white/80 backdrop-blur-md border border-white/80 shadow-2xs shrink-0 flex items-center gap-1">
           <Compass class="w-2.5 h-2.5 text-slate-400" />
           <span>瞬移</span>
         </span>
@@ -392,7 +392,7 @@
           <div class="px-4 pt-2.5 pb-1.5 flex items-center justify-between">
             <div class="flex items-center gap-1.5">
               <h2 class="text-xs font-semibold text-slate-900 tracking-tight">南京精选</h2>
-              <span class="text-[11px] font-semibold text-slate-400 tabular-nums">({{ filteredEvents.length }})</span>
+              <span class="text-[11px] font-semibold text-slate-600 tabular-nums">({{ filteredEvents.length }})</span>
             </div>
 
             <div class="flex items-center gap-2">
@@ -402,7 +402,7 @@
                   @click="currentViewMode = 'cards'"
                   :class="[
                     'px-2 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1',
-                    currentViewMode === 'cards' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+                    currentViewMode === 'cards' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
                   ]"
                 >
                   <Layers class="w-3 h-3" />
@@ -412,7 +412,7 @@
                   @click="currentViewMode = 'timeline'"
                   :class="[
                     'px-2 py-0.5 rounded-md transition-all cursor-pointer flex items-center gap-1',
-                    currentViewMode === 'timeline' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-900'
+                    currentViewMode === 'timeline' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-600 hover:text-slate-900'
                   ]"
                 >
                   <Clock class="w-3 h-3" />
@@ -441,7 +441,7 @@
                 @click="sortBy = s.value"
                 :class="[
                   'px-2 py-0.5 rounded-md transition-all cursor-pointer whitespace-nowrap',
-                  sortBy === s.value ? 'bg-white text-slate-950 font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900'
+                  sortBy === s.value ? 'bg-white text-slate-950 font-semibold shadow-xs' : 'text-slate-600 hover:text-slate-900'
                 ]"
               >
                 {{ s.label }}
@@ -457,10 +457,10 @@
                 'min-w-[38px] h-[36px] rounded-lg flex flex-col items-center justify-center px-1 cursor-pointer transition-all shrink-0 text-center',
                 selectedCalendarDate === null
                   ? 'bg-slate-950 text-white shadow-xs font-semibold'
-                  : 'bg-white/80 hover:bg-white text-slate-600 border border-black/[0.04]'
+                  : 'bg-white/90 hover:bg-white text-slate-700 border border-black/[0.04]'
               ]"
             >
-              <span class="text-[9px] opacity-75 leading-none">全周期</span>
+              <span class="text-[9px] font-medium leading-none">全周期</span>
               <span class="text-[11px] font-bold leading-tight mt-0.5">全部</span>
             </button>
 
@@ -472,13 +472,13 @@
                 'min-w-[40px] h-[36px] rounded-lg flex flex-col items-center justify-between py-1 px-1 cursor-pointer transition-all shrink-0 text-center',
                 selectedCalendarDate === day.iso
                   ? 'bg-[#007AFF] text-white shadow-xs font-semibold scale-102'
-                  : (day.count > 0 ? 'bg-white/90 hover:bg-white text-slate-800 border border-black/[0.04]' : 'bg-black/[0.02] text-slate-400 border border-transparent')
+                  : (day.count > 0 ? 'bg-white/95 hover:bg-white text-slate-800 border border-black/[0.04]' : 'bg-black/[0.02] text-slate-700 border border-transparent')
               ]"
             >
-              <span class="text-[9px] leading-none" :class="selectedCalendarDate === day.iso ? 'text-white/90' : 'text-slate-400'">
+              <span class="text-[9px] leading-none" :class="selectedCalendarDate === day.iso ? 'text-white/90' : 'text-slate-600 font-medium'">
                 {{ day.label }}
               </span>
-              <span class="text-[12px] font-bold tabular-nums leading-none">
+              <span class="text-[12px] font-bold tabular-nums leading-none" :class="selectedCalendarDate === day.iso ? 'text-white' : (day.count > 0 ? 'text-slate-900' : 'text-slate-700')">
                 {{ day.dateNum }}
               </span>
               <div class="flex items-center gap-0.5 h-1">
@@ -555,7 +555,7 @@
                 >
                   <span>{{ getStatusInfo(item).label }}</span>
                 </span>
-                <span class="text-[11px] text-slate-400 truncate">{{ item.event_time_text }}</span>
+                <span class="text-[11px] text-slate-600 font-medium truncate">{{ item.event_time_text }}</span>
               </div>
 
               <!-- 主标题 -->
@@ -564,12 +564,12 @@
               </h3>
 
               <!-- 地址元数据 -->
-              <div class="text-xs text-slate-500 space-y-1 mb-3">
+              <div class="text-xs text-slate-600 space-y-1 mb-3">
                 <div class="flex items-center gap-1.5 text-slate-600">
                   <MapPin class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   <span class="truncate font-medium text-slate-800">{{ item.address }}</span>
                   <span class="text-slate-300">·</span>
-                  <span class="shrink-0 text-slate-500 bg-black/[0.03] px-1.5 py-0.5 rounded text-[11px]">{{ item.district }}</span>
+                  <span class="shrink-0 text-slate-600 font-medium bg-black/[0.04] px-1.5 py-0.5 rounded text-[11px]">{{ item.district }}</span>
                 </div>
               </div>
 
@@ -663,14 +663,14 @@
                           <span :class="['px-1.5 py-0.2 rounded text-[9.5px] font-semibold border', getStatusInfo(item).bg]">
                             {{ getStatusInfo(item).label }}
                           </span>
-                          <span class="text-[10px] text-slate-400 truncate">{{ item.event_time_text }}</span>
+                          <span class="text-[10px] text-slate-600 font-medium truncate">{{ item.event_time_text }}</span>
                         </div>
                         <h4 class="text-xs font-semibold text-slate-900 group-hover:text-[#007AFF] transition-colors line-clamp-2 leading-snug">
                           {{ item.title }}
                         </h4>
                       </div>
 
-                      <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-black/[0.03] mt-2" @click.stop>
+                      <div class="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-black/[0.03] mt-2" @click.stop>
                         <span class="font-medium truncate max-w-[130px] text-slate-600">{{ item.address }}</span>
                         <div class="flex items-center gap-2">
                           <span class="text-[#34C759] font-medium" v-if="item.is_free">免票</span>
@@ -780,7 +780,7 @@
                 <MapPin class="w-4 h-4 text-[#007AFF] shrink-0 mt-0.5" />
                 <div class="min-w-0">
                   <div class="text-xs font-semibold text-slate-900 truncate">{{ detailItem.address }}</div>
-                  <div class="text-[11px] text-slate-400 mt-0.5">{{ detailItem.district }} · 距新街口 {{ detailItem.distance_km }} km</div>
+                  <div class="text-[11px] text-slate-600 font-medium mt-0.5">{{ detailItem.district }} · 距新街口 {{ detailItem.distance_km }} km</div>
                 </div>
               </div>
               <button
@@ -822,7 +822,7 @@
                   : 'bg-black/[0.05] hover:bg-black/[0.08] text-slate-800'
               ]"
             >
-              <Star class="w-3.5 h-3.5" :class="isFavorite(detailItem.id) ? 'fill-white text-white' : 'text-slate-500'" />
+              <Star class="w-3.5 h-3.5" :class="isFavorite(detailItem.id) ? 'fill-white text-white' : 'text-slate-600'" />
               <span>{{ isFavorite(detailItem.id) ? '已在清单' : '加入待去' }}</span>
             </button>
 
@@ -1011,6 +1011,15 @@ const favoriteIds = ref(safeGetFavorites());
 
 // 地图图层状态
 const mapStyleMode = ref('standard');
+watch(mapStyleMode, (mode) => {
+  if (typeof document !== 'undefined') {
+    if (mode === 'dark') {
+      document.documentElement.classList.add('theme-dark');
+    } else {
+      document.documentElement.classList.remove('theme-dark');
+    }
+  }
+}, { immediate: true });
 const showRings = ref(false);
 const showHeatmap = ref(false);
 
@@ -1074,7 +1083,7 @@ function getEventCover(item) {
 function getStatusInfo(item) {
   const tl = item.days_left;
   if (tl !== undefined && tl !== null) {
-    if (tl <= 0) return { label: '已结束', bg: 'bg-slate-100 text-slate-500 border-slate-200' };
+    if (tl <= 0) return { label: '已结束', bg: 'bg-slate-100 text-slate-600 border-slate-200' };
     if (tl <= 3) return { label: `剩${tl}天`, bg: 'bg-red-50 text-red-700 border-red-200/60' };
     if (tl <= 7) return { label: `剩${tl}天`, bg: 'bg-amber-50 text-amber-700 border-amber-200/60' };
   }
@@ -1433,7 +1442,7 @@ function syncMarkersDiff() {
         <div class="marker-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06] font-medium text-[11px] whitespace-nowrap cursor-pointer transition-all duration-300 bg-white/95 text-slate-800 hover:bg-white hover:shadow-md">
           <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${dotColor}"></span>
           <span class="marker-name font-semibold truncate max-w-[76px] text-slate-900">${shortName}</span>
-          <span class="marker-price text-[10px] font-medium text-slate-500 hidden sm:inline">· ${priceLabel}</span>
+          <span class="marker-price text-[10px] font-medium text-slate-600 hidden sm:inline">· ${priceLabel}</span>
         </div>
       </div>
     `;
