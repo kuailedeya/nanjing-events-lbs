@@ -1,5 +1,5 @@
 <template>
-  <div class="relative w-screen h-screen overflow-hidden bg-[#F5F5F7] select-none text-slate-900 font-sans antialiased">
+  <div :class="['relative w-screen h-screen overflow-hidden select-none font-sans antialiased transition-colors duration-300', mapStyleMode === 'dark' ? 'theme-dark bg-slate-950 text-slate-100' : 'bg-[#F5F5F7] text-slate-900']">
     
     <!-- 1. 全屏底图 (原生 GCJ-02 火星坐标) -->
     <div 
@@ -41,7 +41,7 @@
             :key="cat.value"
             @click="activeCategory = cat.value"
             :class="[
-              'px-2 sm:px-2.5 py-1 rounded-lg transition-all text-xs cursor-pointer',
+              'px-1.5 sm:px-2.5 py-1 rounded-lg transition-all text-[11px] sm:text-xs cursor-pointer',
               activeCategory === cat.value
                 ? 'bg-white text-slate-900 shadow-[0_2px_6px_rgba(0,0,0,0.1)] font-semibold'
                 : 'text-slate-500 hover:text-slate-900'
@@ -325,6 +325,17 @@
       </button>
 
       <button
+        @click="toggleRings"
+        :class="[
+          'w-9 h-9 rounded-full backdrop-blur-md shadow-md border transition flex items-center justify-center active:scale-95',
+          showRings ? 'bg-slate-950 text-white border-slate-950' : 'bg-white/90 text-slate-700 border-white/80'
+        ]"
+        title="辐射圈"
+      >
+        <Disc class="w-4 h-4" :class="showRings ? 'text-[#34C759]' : 'text-slate-400'" />
+      </button>
+
+      <button
         @click="toggleHeatmap"
         :class="[
           'w-9 h-9 rounded-full backdrop-blur-md shadow-md border transition flex items-center justify-center active:scale-95',
@@ -348,8 +359,9 @@
     <aside
       :class="[
         'z-20 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pointer-events-auto',
-        // 移动端 (< 768px): 贴底上拉 Bottom Sheet (58vh 高度，给卡片更多留白)
-        'fixed inset-x-0 bottom-0 max-h-[58vh] h-[58vh] md:h-auto rounded-t-[28px] border-t border-white/80 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] bg-[#F5F5F7]/95 backdrop-blur-2xl',
+        // 移动端 (< 768px): 贴底上拉 Bottom Sheet，支持半屏 (52vh) 与全览 (86vh) 双档流畅切换
+        'fixed inset-x-0 bottom-0 md:h-auto rounded-t-[28px] border-t border-white/80 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] bg-[#F5F5F7]/95 backdrop-blur-2xl',
+        mobileSheetExpanded ? 'max-h-[86vh] h-[86vh]' : 'max-h-[52vh] h-[52vh]',
         // 桌面端 (>= 768px): 右侧悬浮亚克力抽屉
         'md:fixed md:top-6 md:right-6 md:bottom-6 md:left-auto md:w-[420px] md:max-h-none md:rounded-[28px] md:border md:border-white/80 md:shadow-[0_20px_50px_rgba(0,0,0,0.1)]',
         !drawerOpen ? 'translate-y-full md:translate-y-0 md:translate-x-[calc(100%+24px)]' : 'translate-y-0 md:translate-x-0'
@@ -357,8 +369,14 @@
     >
       <div class="relative w-full h-full flex flex-col overflow-hidden">
         
-        <!-- 移动端把手 (Pull Handle) -->
-        <div class="w-10 h-1 bg-slate-300 rounded-full mx-auto my-2 md:hidden shrink-0"></div>
+        <!-- 移动端把手 (Pull Handle - 点击平滑升降高度) -->
+        <button
+          @click="mobileSheetExpanded = !mobileSheetExpanded"
+          class="w-full flex items-center justify-center py-2.5 md:hidden shrink-0 cursor-pointer focus:outline-none"
+          :title="mobileSheetExpanded ? '收起面板 (半屏)' : '展开面板 (全屏)'"
+        >
+          <div class="w-10 h-1 bg-slate-300 hover:bg-slate-400 rounded-full transition-colors"></div>
+        </button>
 
         <!-- 固定头部：非溢出 Apple HIG 3 层轻薄布局 -->
         <div class="flex-shrink-0 z-10 bg-[#F5F5F7]/95 backdrop-blur-md border-b border-black/[0.04]">
@@ -810,6 +828,15 @@
             </a>
 
             <a
+              href="/api/events/calendar.ics"
+              download="nanjing-events.ics"
+              class="p-2.5 rounded-xl bg-black/[0.05] hover:bg-black/[0.08] text-slate-700 transition-all cursor-pointer"
+              title="导出到 Apple 日历 (iCalendar)"
+            >
+              <Calendar class="w-4 h-4 text-slate-600" />
+            </a>
+
+            <a
               v-if="detailItem.obsidian_uri"
               :href="detailItem.obsidian_uri"
               class="p-2.5 rounded-xl bg-black/[0.05] hover:bg-black/[0.08] text-slate-700 transition-all cursor-pointer"
@@ -933,6 +960,7 @@ const activeEventId = ref(null);
 const detailItem = ref(null);
 const currentViewMode = ref('cards');
 const drawerOpen = ref(true);
+const mobileSheetExpanded = ref(false);
 const searchQuery = ref('');
 const debouncedSearch = ref('');
 let searchTimer = null;
@@ -1132,8 +1160,10 @@ const calendarDays = computed(() => {
     const dayNum = String(d.getDate()).padStart(2, '0');
     const iso = `${y}-${m}-${dayNum}`;
     const count = events.value.filter(it => {
-      if (!it.start_date || !it.end_date) return true;
-      return it.start_date <= iso && it.end_date >= iso;
+      const s = it.start_date || it.end_date;
+      const e = it.end_date || it.start_date;
+      if (!s && !e) return false;
+      return (s || '') <= iso && (e || s) >= iso;
     }).length;
     days.push({
       iso,
@@ -1160,8 +1190,12 @@ const filteredEvents = computed(() => {
     if (selectedDistrict.value !== 'ALL' && it.district !== selectedDistrict.value) return false;
     if (freeOnly.value && !it.is_free) return false;
     if (radiusFilter.value > 0 && it.distance_km > radiusFilter.value) return false;
-    if (selectedCalendarDate.value && it.start_date && it.end_date) {
-      if (it.start_date > selectedCalendarDate.value || it.end_date < selectedCalendarDate.value) return false;
+    if (selectedCalendarDate.value) {
+      const s = it.start_date || it.end_date;
+      const e = it.end_date || it.start_date;
+      if (s && e) {
+        if (s > selectedCalendarDate.value || e < selectedCalendarDate.value) return false;
+      }
     }
     if (debouncedSearch.value) {
       const q = debouncedSearch.value.toLowerCase();
@@ -1266,6 +1300,19 @@ function initMap() {
 
   leafletMarkersGroup = L.layerGroup().addTo(leafletMap);
   ringsGroup = L.layerGroup().addTo(leafletMap);
+
+  function updateZoomLOD() {
+    const mapBox = document.getElementById('map-container');
+    if (mapBox && leafletMap) {
+      if (leafletMap.getZoom() < 12) {
+        mapBox.classList.add('map-zoomed-out');
+      } else {
+        mapBox.classList.remove('map-zoomed-out');
+      }
+    }
+  }
+  leafletMap.on('zoomend', updateZoomLOD);
+  updateZoomLOD();
 
   syncMarkersDiff();
 }
@@ -1433,14 +1480,24 @@ function openDetail(item) {
   detailItem.value = item;
   flyToWithOffset(item.lat, item.lng, 15);
   scrollToCard(item.id);
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('id', item.id);
+    window.history.replaceState(null, '', url.toString());
+  } catch (e) {}
 }
 
 function closeDetail() {
   detailItem.value = null;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('id');
+    window.history.replaceState(null, '', url.toString());
+  } catch (e) {}
 }
 
 function scrollToCard(itemId) {
-  const el = document.getElementById('card-' + itemId);
+  const el = document.getElementById('card-' + itemId) || document.getElementById('timeline-card-' + itemId);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -1503,7 +1560,8 @@ function isFavorite(id) {
 
 function toggleFavorite(item) {
   const idx = favoriteIds.value.indexOf(item.id);
-  if (idx > -1) {
+  const isNowFav = idx === -1;
+  if (!isNowFav) {
     favoriteIds.value.splice(idx, 1);
     showToast('已移出待去清单');
   } else {
@@ -1511,14 +1569,45 @@ function toggleFavorite(item) {
     showToast('已加入待去清单', 'success');
   }
   safeSetFavorites(favoriteIds.value);
+
+  // 异步同步至后端 SQLite 数据库，驱动 Apple iCal (.ics) 日历订阅实时生效
+  try {
+    fetch('/api/events/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: item.id,
+        status: isNowFav ? '待去/已想去' : '已移出'
+      })
+    }).catch(() => {});
+  } catch (e) {}
 }
 
 function handleImageError(e) {
   e.target.src = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=600&q=80';
 }
 
+function fallbackCopyText(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+  } catch (e) {}
+  document.body.removeChild(ta);
+}
+
 function copyAddress(addr) {
-  navigator.clipboard.writeText(addr || '南京市');
+  const text = addr || '南京市';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopyText(text));
+  } else {
+    fallbackCopyText(text);
+  }
   copiedAddress.value = true;
   showToast('场馆地址已复制到剪贴板', 'success');
   setTimeout(() => { copiedAddress.value = false; }, 2000);
@@ -1536,6 +1625,19 @@ function normalizeEvent(it) {
   };
 }
 
+function checkDeepLink() {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetId = urlParams.get('id');
+    if (targetId) {
+      const match = events.value.find(e => String(e.id) === String(targetId));
+      if (match) {
+        nextTick(() => openDetail(match));
+      }
+    }
+  } catch (e) {}
+}
+
 async function loadData() {
   try {
     const res = await fetch('/api/events');
@@ -1543,6 +1645,7 @@ async function loadData() {
       const data = await res.json();
       if (Array.isArray(data.items) && data.items.length) {
         events.value = data.items.map(normalizeEvent);
+        checkDeepLink();
         return;
       }
     }
@@ -1555,6 +1658,7 @@ async function loadData() {
       const fallbackData = await fallbackRes.json();
       if (Array.isArray(fallbackData) && fallbackData.length) {
         events.value = fallbackData.map(normalizeEvent);
+        checkDeepLink();
         return;
       }
     }
@@ -1681,6 +1785,12 @@ function handleWindowResize() {
 }
 
 watch(drawerOpen, () => {
+  setTimeout(() => {
+    if (leafletMap) leafletMap.invalidateSize();
+  }, 350);
+});
+
+watch(mobileSheetExpanded, () => {
   setTimeout(() => {
     if (leafletMap) leafletMap.invalidateSize();
   }, 350);

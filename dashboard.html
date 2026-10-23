@@ -650,10 +650,7 @@
               </div>
             </div>
 
-          </div>
-        </div>
-
-        <!-- 视图 B: 【⏱️ 时间轴视图 (Timeline View)】 -->
+          </div>\r\n        </div>\r\n\r\n        <!-- 视图 B: 【⏱️ 时间轴视图 (Timeline View)】 -->
           <div v-else class="space-y-6">
             <!-- 4 大吸顶分组 -->
             <div v-for="group in timelineGroups" :key="group.id" class="relative">
@@ -1190,7 +1187,7 @@
 
         function cleanString(str) {
           if (!str) return '';
-          return String(str).replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\uFE0F]/gu, '').trim();
+          return String(str).replace(/[\\u{1F300}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\uFE0F]/gu, '').trim();
         }
 
         function haversineDistance(lng1, lat1, lng2, lat2) {

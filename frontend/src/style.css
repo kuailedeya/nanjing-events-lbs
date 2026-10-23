@@ -65,3 +65,59 @@ body {
 .amap-apple-filter .leaflet-tile {
   filter: grayscale(88%) brightness(103%) contrast(92%) !important;
 }
+
+/* Marker Level of Detail (LOD): Collapse into compact dot badges at zoom < 12 to avoid label collisions */
+.map-zoomed-out .apple-marker:not(.active):not(.marker-active) .marker-name,
+.map-zoomed-out .apple-marker:not(.active):not(.marker-active) .marker-price {
+  display: none !important;
+}
+
+.map-zoomed-out .apple-marker:not(.active):not(.marker-active) .marker-pill {
+  padding: 4px !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Dark Mode Liquid Glass & Surface System */
+.theme-dark .bg-white\/85,
+.theme-dark .bg-white\/90,
+.theme-dark .bg-white\/80 {
+  background-color: rgba(15, 23, 42, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f1f5f9 !important;
+}
+
+.theme-dark aside {
+  background-color: rgba(15, 23, 42, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.theme-dark aside > div > div {
+  background-color: rgba(15, 23, 42, 0.95) !important;
+}
+
+.theme-dark .bg-white {
+  background-color: #1e293b !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #f8fafc !important;
+}
+
+.theme-dark h2,
+.theme-dark h3,
+.theme-dark h4,
+.theme-dark .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+.theme-dark .text-slate-800,
+.theme-dark .text-slate-700,
+.theme-dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+.theme-dark .bg-black\/\[0\.04\],
+.theme-dark .bg-black\/\[0\.05\],
+.theme-dark .bg-black\/\[0\.025\],
+.theme-dark .bg-black\/\[0\.015\] {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}

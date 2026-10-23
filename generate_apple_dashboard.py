@@ -23,7 +23,7 @@ OUT_HTML = Path(__file__).resolve().parent / "dashboard.html"
 items = dashboard_server.get_all_events()
 fallback_json = json.dumps(items, ensure_ascii=False)
 
-HTML_CONTENT = """<!DOCTYPE html>
+HTML_CONTENT = r"""<!DOCTYPE html>
 <html lang="zh-CN" class="h-full">
 <head>
   <meta charset="UTF-8" />
