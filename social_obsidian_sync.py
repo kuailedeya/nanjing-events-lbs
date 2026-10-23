@@ -22,6 +22,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import os
 import random
 import re
 import sqlite3
@@ -35,9 +36,10 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-DEFAULT_VAULT_DIR = Path(r"E:\Note storage\IOT")
+BASE_DIR = Path(os.environ.get("BASE_DIR", Path(__file__).resolve().parent))
+DEFAULT_VAULT_DIR = Path(os.environ.get("VAULT_DIR", r"E:\Note storage\IOT"))
 DEFAULT_DB_FOLDER_NAME = "05_社媒情报库"
-DEFAULT_SQLITE_PATH = Path(r"E:\usage\local.db")
+DEFAULT_SQLITE_PATH = Path(os.environ.get("DB_PATH", BASE_DIR / "local.db"))
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -168,13 +170,13 @@ def extract_structured_fields(title: str, raw_text: str, category: str, platform
     # 1. 提取时间 (event_time)
     event_time = "近期进行中"
     time_patterns = [
-        r"(2026年?\d{1,2}月\d{1,2}日?\s*[-~至—–]\s*(?:\d{1,2}月)?\d{1,2}日?)",
+        r"((?:202\d年?)?\d{1,2}月\d{1,2}日?\s*[-~至—–]\s*(?:\d{1,2}月)?\d{1,2}日?)",
         r"(\d{1,2}月\d{1,2}日\s*[-~至—–]\s*(?:\d{1,2}月)?\d{1,2}日)",
         r"(10/\d{1,2}\s*[-~至]\s*10/\d{1,2})",
         r"(10\.\d{1,2}\s*[-~至]\s*10\.\d{1,2})",
         r"(\d{1,2}月\d{1,2}日(?:起|开园|开幕|开展|截止))",
         r"(每周[五六日末]+(?:晚|上午|下午)?)",
-        r"(10月\d{1,2}日)",
+        r"(\d{1,2}月\d{1,2}日)",
     ]
     for pat in time_patterns:
         m = re.search(pat, f"{title} {joined}")
@@ -326,9 +328,11 @@ class NanjingDealScraper:
         try:
             r = self.session.get(mp_url, timeout=10)
             soup = BeautifulSoup(r.text, "lxml")
-            # 校验是否被重定向到了过期旧文
+            # 校验是否被重定向到了过期旧文 (动态支持 SYNC_LOOKBACK_DAYS，默认 180 天)
+            lookback_days = int(os.environ.get("SYNC_LOOKBACK_DAYS", "180"))
+            min_valid_ts = int(time.time()) - (lookback_days * 86400)
             ct_m = re.search(r'\bvar\s+ct\s*=\s*["\'](\d{10})["\']', r.text)
-            if ct_m and int(ct_m.group(1)) < 1767225600:
+            if ct_m and int(ct_m.group(1)) < min_valid_ts:
                 return fallback_snippet
 
             parts: List[str] = []
@@ -361,8 +365,10 @@ class NanjingDealScraper:
             for li in soup.select("ul.news-list li"):
                 ts_m = re.search(r"timeConvert\(['\"](\d{10})['\"]\)", str(li))
                 ts = int(ts_m.group(1)) if ts_m else 0
-                # 只保留 2026 年 9-10 月最新发布的有效信息，剔除陈年旧闻
-                if ts < 1788000000:
+                # 动态滑动窗口过滤，保留近期有效信息，剔除陈旧历史
+                lookback_days = int(os.environ.get("SYNC_LOOKBACK_DAYS", "180"))
+                min_valid_ts = int(time.time()) - (lookback_days * 86400)
+                if ts < min_valid_ts:
                     continue
 
                 h3_a = li.select_one("h3 a")
@@ -463,7 +469,9 @@ class NanjingDealScraper:
                 if not nid or nid in seen_ids:
                     continue
                 try:
-                    if len(nid) >= 8 and int(nid[:8], 16) < 1767225600:
+                    lookback_days = int(os.environ.get("SYNC_LOOKBACK_DAYS", "180"))
+                    min_valid_ts = int(time.time()) - (lookback_days * 86400)
+                    if len(nid) >= 8 and int(nid[:8], 16) < min_valid_ts:
                         continue
                 except Exception:
                     pass
@@ -485,7 +493,10 @@ class NanjingDealScraper:
             title = nc.get("displayTitle") or f"小红书笔记_{nid[:8]}"
             author = nc.get("user", {}).get("nickname") or "小红书博主"
             likes = parse_count(nc.get("interactInfo", {}).get("likedCount", 0))
-            pub_date = datetime.datetime.fromtimestamp(int(nid[:8], 16)).strftime("%Y-%m-%d")
+            try:
+                pub_date = datetime.datetime.fromtimestamp(int(nid[:8], 16)).strftime("%Y-%m-%d")
+            except Exception:
+                pub_date = datetime.date.today().strftime("%Y-%m-%d")
 
             detail_url = f"https://www.xiaohongshu.com/explore/{nid}?xsec_token={quote(xsec)}&xsec_source=pc_feed"
             desc = title
@@ -546,8 +557,11 @@ class ObsidianSummaryDB:
         self.deal_dir = self.db_root / "羊毛福利"
         self.sqlite_path = sqlite_path
 
-        for d in (self.expo_dir, self.event_dir, self.deal_dir):
-            d.mkdir(parents=True, exist_ok=True)
+        try:
+            for d in (self.expo_dir, self.event_dir, self.deal_dir):
+                d.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            print(f"[!] Warning: Vault 目录不可直接访问 ({e})，以 SQLite 降级模式工作", flush=True)
         self._init_sqlite()
 
     def _init_sqlite(self) -> None:
@@ -646,7 +660,12 @@ class ObsidianSummaryDB:
 
 {bullets_md}
 """
-        file_path.write_text(md_content, encoding="utf-8")
+        try:
+            if not file_path.parent.exists():
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(md_content, encoding="utf-8")
+        except OSError:
+            pass
 
         conn = sqlite3.connect(self.sqlite_path)
         conn.execute(
@@ -775,21 +794,26 @@ views:
       - property: publish_date
         direction: DESC
 """
-        base_file.write_text(base_yaml, encoding="utf-8")
+        vault_accessible = self.vault_dir.exists()
+        if vault_accessible:
+            try:
+                base_file.write_text(base_yaml, encoding="utf-8")
+            except OSError:
+                pass
 
         conn = sqlite3.connect(self.sqlite_path)
         conn.row_factory = sqlite3.Row
         all_rows = conn.execute(
             "SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC"
         ).fetchall()
+        conn.close()
+
+        vault_accessible = self.vault_dir.exists()
         rows = []
         for r in all_rows:
-            if (self.vault_dir / r["obsidian_path"]).exists():
+            # 只有当 Vault 目录存在且文件确实存在时正常关联；若脱机或文件未落盘，安全保留记录，绝不盲目删库
+            if not vault_accessible or (self.vault_dir / r["obsidian_path"]).exists():
                 rows.append(r)
-            else:
-                conn.execute("DELETE FROM nanjing_deals_events WHERE post_id = ?", (r["post_id"],))
-        conn.commit()
-        conn.close()
 
         expos = [r for r in rows if r["category"] == "🎪 南京展会"]
         events = [r for r in rows if r["category"] == "🎉 南京活动"]
@@ -865,10 +889,14 @@ tags:
 
 ```powershell
 # 一键抓取最新【南京展会 + 南京活动 + 羊毛福利】并提炼写入 Obsidian 数据库
-C:\\ProgramData\\anaconda3\\python.exe E:\\usage\\social_obsidian_sync.py
+python social_obsidian_sync.py
 ```
 """
-        (self.db_root / "_社媒情报总览.md").write_text(dashboard_md, encoding="utf-8")
+        if vault_accessible:
+            try:
+                (self.db_root / "_社媒情报总览.md").write_text(dashboard_md, encoding="utf-8")
+            except OSError:
+                pass
 
 
 def main() -> None:

@@ -7,8 +7,12 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    HOST=0.0.0.0 \
     PORT=8765 \
-    TZ=Asia/Shanghai
+    TZ=Asia/Shanghai \
+    BASE_DIR=/app \
+    DB_PATH=/app/data/local.db \
+    VAULT_DIR=/app/vault
 
 # 安装系统基础库及时区支持
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,6 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 创建挂载与运行所需目录
+RUN mkdir -p /app/data /app/vault
+
 # 拷贝核心服务代码及静态资源
 COPY dashboard_server.py .
 COPY nanjing_lbs_engine.py .
@@ -27,6 +34,7 @@ COPY social_obsidian_sync.py .
 COPY nanjing_seeds.py .
 COPY generate_apple_dashboard.py .
 COPY dashboard.html .
+COPY local.db ./data/local.db
 COPY local.db .
 COPY frontend/dist ./frontend/dist
 

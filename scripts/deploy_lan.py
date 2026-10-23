@@ -4,6 +4,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 def setup_startup():
     appdata = os.environ.get("APPDATA", "")
     if not appdata:
@@ -11,14 +13,14 @@ def setup_startup():
         return False
     startup_dir = Path(appdata) / r"Microsoft\Windows\Start Menu\Programs\Startup"
     shortcut_path = startup_dir / "NanjingLBS.lnk"
-    vbs_path = Path(r"E:\usage\scripts\start_silent.vbs")
+    vbs_path = REPO_ROOT / "scripts" / "start_silent.vbs"
 
     ps_script = f'''
 $ws = New-Object -ComObject WScript.Shell
 $s = $ws.CreateShortcut('{str(shortcut_path)}')
 $s.TargetPath = 'wscript.exe'
 $s.Arguments = '"{str(vbs_path)}"'
-$s.WorkingDirectory = 'E:\\usage'
+$s.WorkingDirectory = '{str(REPO_ROOT)}'
 $s.Description = 'Nanjing Events LBS Platform AutoStart'
 $s.Save()
 '''
@@ -75,6 +77,6 @@ if __name__ == "__main__":
         print(f"    - 局域网访问: http://{ip}:8765")
     print("\n[i] 管理指引:")
     print("    - 开机自启: 已自动生效（开机即在后台静默运行）")
-    print("    - 查看状态: 双击 E:\\usage\\scripts\\status.bat")
-    print("    - 停止服务: 双击 E:\\usage\\scripts\\stop_service.bat")
-    print("    - 手动启动: 双击 E:\\usage\\scripts\\start_silent.vbs")
+    print(f"    - 查看状态: 双击 {REPO_ROOT / 'scripts' / 'status.bat'}")
+    print(f"    - 停止服务: 双击 {REPO_ROOT / 'scripts' / 'stop_service.bat'}")
+    print(f"    - 手动启动: 双击 {REPO_ROOT / 'scripts' / 'start_silent.vbs'}")

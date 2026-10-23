@@ -21,59 +21,46 @@ body {
   scrollbar-width: none;
 }
 
-/* Custom Apple Pill Marker Styling */
+/* Custom Apple & Airbnb Pill Marker Styling */
 .apple-marker {
   transform: translate(-50%, -100%);
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   will-change: transform;
 }
 
 .apple-marker:hover {
-  transform: translate(-50%, -108%) scale(1.08);
-  z-index: 50 !important;
+  transform: translate(-50%, -105%) scale(1.05);
+  z-index: 500 !important;
 }
 
-.apple-marker.active {
-  transform: translate(-50%, -114%) scale(1.15);
-  z-index: 60 !important;
+.apple-marker.active,
+.apple-marker.marker-active {
+  transform: translate(-50%, -108%) scale(1.12);
+  z-index: 1000 !important;
 }
 
-.apple-marker.active .marker-pill {
-  background-color: #007AFF !important;
+.apple-marker.active .marker-pill,
+.apple-marker.marker-active .marker-pill {
+  background-color: #020617 !important; /* bg-slate-950 */
   color: #ffffff !important;
-  box-shadow: 0 10px 25px -5px rgba(0, 122, 255, 0.4), 0 8px 10px -6px rgba(0, 122, 255, 0.2) !important;
-  border-color: #007AFF !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
 }
 
-.apple-marker.active .marker-dot {
+.apple-marker.active .marker-name,
+.apple-marker.marker-active .marker-name,
+.apple-marker.active .marker-price,
+.apple-marker.marker-active .marker-price {
+  color: #ffffff !important;
+}
+
+.apple-marker.active .marker-dot,
+.apple-marker.marker-active .marker-dot {
   background-color: #ffffff !important;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9) !important;
 }
 
-/* Arco radio-group Apple segmented control styling tweak */
-.arco-radio-group-button {
-  background-color: rgba(241, 245, 249, 0.9) !important;
-  border-radius: 9999px !important;
-  padding: 2px !important;
-  border: none !important;
-}
-
-.arco-radio-button {
-  border-radius: 9999px !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  border: none !important;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
-  color: #64748b !important;
-  background: transparent !important;
-}
-
-.arco-radio-button.arco-radio-checked {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  font-weight: 600 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-}
-
-.arco-radio-button::before {
-  display: none !important;
+/* Apple Whitesmoke Map Filter (Subtle Grayscale, No Fake Dark Mode) */
+.amap-apple-filter .leaflet-tile {
+  filter: grayscale(88%) brightness(103%) contrast(92%) !important;
 }

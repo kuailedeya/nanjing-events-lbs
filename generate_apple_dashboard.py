@@ -51,10 +51,6 @@ HTML_CONTENT = """<!DOCTYPE html>
       filter: grayscale(88%) brightness(103%) contrast(92%) !important;
     }
 
-    .amap-dark-filter .leaflet-tile {
-      filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(95%) !important;
-    }
-
     .apple-marker {
       transform: translate(-50%, -100%);
       transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -363,7 +359,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         ]"
         title="在地图上显示新街口 3km/5km/10km 辐射同心圈"
       >
-        <span class="w-3.5 h-3.5 flex items-center justify-center font-bold" :class="showRings ? 'text-[#34C759]' : 'text-slate-400'">◎</span>
+        <svg class="w-3.5 h-3.5" :class="showRings ? 'text-[#34C759]' : 'text-slate-400'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
         <span>辐射圈</span>
       </button>
 
@@ -372,7 +368,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         @click="toggleHeatmap"
         :class="[
           'px-3 py-2 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer',
-          showHeatmap ? 'bg-rose-950 text-rose-100 border-rose-900 shadow-md' : 'text-slate-700 hover:bg-white'
+          showHeatmap ? 'bg-slate-950 text-white border-slate-950 shadow-md' : 'text-slate-700 hover:bg-white'
         ]"
         title="在地图上叠加南京活动密度热力分布图"
       >
@@ -385,7 +381,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         @click="openStatsModal"
         :class="[
           'px-3 py-2 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer',
-          showStatsModal ? 'bg-[#007AFF] text-white border-[#007AFF] shadow-md' : 'text-slate-700 hover:bg-white'
+          showStatsModal ? 'bg-slate-950 text-white border-slate-950 shadow-md' : 'text-slate-700 hover:bg-white'
         ]"
         title="查看南京各区与类型数据可视化统计"
       >
@@ -411,10 +407,8 @@ HTML_CONTENT = """<!DOCTYPE html>
     <!-- 4. 右侧：Airbnb 风格悬浮卡片抽屉 (Liquid Glass Frosted Sheet) -->
     <aside
       :class="[
-        'absolute top-6 right-6 bottom-6 z-20 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pointer-events-auto',
-        drawerOpen
-          ? 'w-[380px] md:w-[440px] translate-x-0'
-          : 'w-12 translate-x-[calc(100%-2.5rem)]'
+        'z-20 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col pointer-events-auto fixed inset-x-0 bottom-0 max-h-[50vh] rounded-t-[28px] border-t border-white/80 shadow-[0_-10px_40px_rgba(0,0,0,0.12)] bg-[#F5F5F7]/95 backdrop-blur-2xl md:fixed md:top-6 md:right-6 md:bottom-6 md:left-auto md:w-[420px] md:max-h-none md:rounded-[28px] md:border md:border-white/80 md:shadow-[0_20px_50px_rgba(0,0,0,0.1)]',
+        !drawerOpen ? 'translate-y-full md:translate-y-0 md:translate-x-[calc(100%+24px)]' : 'translate-y-0 md:translate-x-0'
       ]"
     >
       <div class="relative w-full h-full bg-[#F5F5F7]/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[28px] border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
@@ -563,7 +557,7 @@ HTML_CONTENT = """<!DOCTYPE html>
               v-for="item in filteredEvents"
               :key="item.id"
               :id="'card-' + item.id"
-              @click="openDetail(item)" @mouseenter="activeEventId = item.id; syncMarkers()"
+              @click="openDetail(item)" @mouseenter="activeEventId = item.id" @mouseleave="activeEventId = detailItem ? detailItem.id : null"
               :class="[
                 'group bg-white rounded-2xl p-3.5 transition-all duration-300 cursor-pointer border flex flex-col',
                 activeEventId === item.id
@@ -706,7 +700,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                   v-for="item in group.items"
                   :key="item.id"
                   :id="'timeline-card-' + item.id"
-                  @click="openDetail(item)" @mouseenter="activeEventId = item.id; syncMarkers()"
+                  @click="openDetail(item)" @mouseenter="activeEventId = item.id" @mouseleave="activeEventId = detailItem ? detailItem.id : null"
                   :class="[
                     'group relative bg-white rounded-2xl p-3 transition-all duration-300 cursor-pointer border flex flex-col',
                     activeEventId === item.id
@@ -857,26 +851,21 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
 
             <!-- 核心优惠/权益模块 -->
-            <div class="bg-black/[0.03] rounded-2xl p-3.5 border border-black/[0.04] space-y-1">
-              <div class="text-[11px] font-semibold text-slate-400">门票与权益说明</div>
-              <div class="text-sm font-semibold text-emerald-600 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-[#34C759]"></span>
-                <span>{{ detailItem.benefit }}</span>
-              </div>
+            <!-- 门票与权益：绿色微质感卡片 -->
+            <div class="bg-emerald-50/70 rounded-xl p-3 border border-emerald-200/60 flex items-center gap-2 text-emerald-900">
+              <span class="w-2 h-2 rounded-full bg-[#34C759] shrink-0"></span>
+              <span class="text-xs font-semibold">{{ detailItem.benefit || (detailItem.is_free ? '免票直入' : '详见活动原帖说明') }}</span>
             </div>
 
-            <!-- 时间信息 -->
-            <div class="bg-black/[0.025] rounded-xl p-3 border border-black/[0.04] space-y-1">
-              <div class="text-[11px] font-semibold text-slate-400">举办周期与时间</div>
-              <div class="font-medium text-slate-800">{{ detailItem.event_time_text }}</div>
+            <!-- 举办时间：图标+文本直接表达 -->
+            <div class="bg-black/[0.025] rounded-xl p-3 border border-black/[0.04] flex items-center gap-2.5 text-slate-700">
+              <svg class="w-4 h-4 text-slate-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span class="font-medium text-xs">{{ detailItem.event_time_text }}</span>
             </div>
 
-            <!-- 攻略与详细规则正文 -->
-            <div class="space-y-1.5">
-              <div class="text-[11px] font-semibold text-slate-400">活动简介与规则正文</div>
-              <div class="text-slate-700 leading-relaxed bg-white rounded-xl p-3.5 border border-black/[0.04] shadow-xs">
-                {{ detailItem.summary || detailItem.title + '。更多详情请在各官方公众号及线下服务台咨询。' }}
-              </div>
+            <!-- 简介正文：纯白实体 Apple Card -->
+            <div class="text-slate-700 leading-relaxed bg-white rounded-xl p-4 border border-black/[0.04] shadow-xs text-xs">
+              {{ detailItem.summary || detailItem.title }}
             </div>
 
           </div>
@@ -930,12 +919,9 @@ HTML_CONTENT = """<!DOCTYPE html>
     >
       <div class="relative w-full max-w-4xl bg-white/95 backdrop-blur-3xl rounded-[28px] border border-white/80 shadow-[0_25px_70px_rgba(0,0,0,0.25)] p-6 flex flex-col max-h-[92vh] overflow-hidden">
         <div class="flex items-center justify-between pb-4 border-b border-black/[0.05] shrink-0">
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-base font-semibold text-slate-900 tracking-tight">南京活动 · 数据洞察全景</h2>
-              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-[#007AFF] border border-blue-200/50">ECharts 可视化分析</span>
-            </div>
-            <p class="text-xs text-slate-500 mt-1">当前已精准收录 {{ filteredEvents.length }} 项同城活动，涵盖 11 个行政区与各主流社媒情报</p>
+          <div class="flex items-center gap-2">
+            <h2 class="text-base font-semibold text-slate-900 tracking-tight">南京活动概览</h2>
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">{{ filteredEvents.length }} 场</span>
           </div>
           <button
             @click="closeStatsModal"
@@ -1618,8 +1604,8 @@ HTML_CONTENT = """<!DOCTYPE html>
           return [
             {
               id: 'focus',
-              title: '今日与本周末焦点',
-              desc: '当下最热·出行首选',
+              title: '近期焦点',
+              desc: '',
               items: focusItems,
               dotColor: 'bg-[#FF3B30]',
               nodeColor: 'bg-[#FF3B30]',
@@ -1627,8 +1613,8 @@ HTML_CONTENT = """<!DOCTYPE html>
             },
             {
               id: 'expiring',
-              title: '即将截止 · 抓紧去',
-              desc: '7天内结束·错过等明年',
+              title: '即将结束',
+              desc: '',
               items: expiringItems,
               dotColor: 'bg-[#FF9500]',
               nodeColor: 'bg-[#FF9500]',
@@ -1636,8 +1622,8 @@ HTML_CONTENT = """<!DOCTYPE html>
             },
             {
               id: 'upcoming',
-              title: '近期即将开始 · 前瞻',
-              desc: '抢先知晓·早鸟预约',
+              title: '即将开始',
+              desc: '',
               items: upcomingItems,
               dotColor: 'bg-[#007AFF]',
               nodeColor: 'bg-[#007AFF]',
@@ -1645,8 +1631,8 @@ HTML_CONTENT = """<!DOCTYPE html>
             },
             {
               id: 'longterm',
-              title: '跨月长线活动 · 常设展期',
-              desc: '展期超30天·闲暇随时去',
+              title: '常设展览',
+              desc: '',
               items: longtermItems,
               dotColor: 'bg-[#34C759]',
               nodeColor: 'bg-[#34C759]',
@@ -1716,7 +1702,13 @@ HTML_CONTENT = """<!DOCTYPE html>
           if (baseTileLayer) leafletMap.removeLayer(baseTileLayer);
           if (satelliteOverlayLayer) leafletMap.removeLayer(satelliteOverlayLayer);
 
-          if (mapStyleMode.value === 'satellite') {
+          if (mapStyleMode.value === 'dark') {
+            baseTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+              subdomains: 'abcd',
+              maxZoom: 19,
+              minZoom: 8
+            }).addTo(leafletMap);
+          } else if (mapStyleMode.value === 'satellite') {
             baseTileLayer = L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', {
               subdomains: ['1', '2', '3', '4'],
               maxZoom: 18,
@@ -1825,22 +1817,35 @@ HTML_CONTENT = """<!DOCTYPE html>
           }
         }
 
-        // 渲染地图胶囊标点 (彻底去除 Popup 双影覆盖)
+                // 持久化 MarkerMap (0 DOM 重建，仅 Diff 更新)
+        const markerMap = new Map();
+
         function syncMarkers() {
           if (!leafletMap || !leafletMarkersGroup) return;
-          leafletMarkersGroup.clearLayers();
 
-          // 坐标防碰撞重叠算法 (Spider Radial Spread for nearby points)
+          const currentList = filteredEvents.value;
+          const newIds = new Set(currentList.map(it => it.id));
+
+          // 1. 删除离开可视列表的 Marker
+          for (const [id, marker] of markerMap.entries()) {
+            if (!newIds.has(id)) {
+              leafletMarkersGroup.removeLayer(marker);
+              markerMap.delete(id);
+            }
+          }
+
+          // 2. 坐标防重合径向散开
           const coordBuckets = {};
-          const JITTER_STEP = 0.0022; // 约 220 米轻微径向散开，消除重合
+          const JITTER_STEP = 0.0022;
 
-          filteredEvents.value.forEach(item => {
+          currentList.forEach(item => {
             const rawLat = Number(item.lat);
             const rawLng = Number(item.lng);
-            // 聚类近似桶 key (约 300m 精度)
             const bucketKey = Math.round(rawLat * 200) + '_' + Math.round(rawLng * 200);
             const countInBucket = coordBuckets[bucketKey] || 0;
             coordBuckets[bucketKey] = countInBucket + 1;
+
+            if (markerMap.has(item.id)) return;
 
             let finalLat = rawLat;
             let finalLng = rawLng;
@@ -1852,21 +1857,15 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
 
             const dotColor = getMarkerDotColor(item.category);
-            const shortName = getMarkerShortName(item.title);
+            const shortName = item.short_title || getMarkerShortName(item.title);
             const priceLabel = getMarkerPriceLabel(item);
-            const isActive = activeEventId.value === item.id;
 
-            // Airbnb 空间探索标点规范: 默认紧凑小胶囊，悬停/激活反色纯黑大胶囊
             const iconHtml = `
-              <div class="apple-marker ${isActive ? 'active' : ''}" id="leaf-marker-${item.id}">
-                <div class="marker-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06] font-medium text-[11px] whitespace-nowrap cursor-pointer transition-all duration-300 ${
-                  isActive
-                    ? 'bg-slate-950 text-white ring-2 ring-white/90 scale-110 shadow-[0_16px_36px_rgba(0,0,0,0.35)]'
-                    : 'bg-white/95 text-slate-800 hover:bg-white hover:shadow-md'
-                }">
-                  <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${isActive ? '#ffffff' : dotColor}"></span>
-                  <span class="marker-name font-semibold truncate ${isActive ? 'max-w-[150px] text-white' : 'max-w-[76px] text-slate-900'}">${shortName}</span>
-                  ${isActive ? `<span class="text-white/40">·</span><span class="text-[10px] font-medium text-white/90">${priceLabel}</span>` : ''}
+              <div class="apple-marker" id="leaf-marker-${item.id}" tabindex="0" role="button" aria-label="${item.title} - ${priceLabel}">
+                <div class="marker-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06] font-medium text-[11px] whitespace-nowrap cursor-pointer transition-all duration-300 bg-white/95 text-slate-800 hover:bg-white hover:shadow-md">
+                  <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${dotColor}"></span>
+                  <span class="marker-name font-semibold truncate max-w-[76px] text-slate-900">${shortName}</span>
+                  <span class="marker-price text-[10px] font-medium text-slate-500 hidden sm:inline">· ${priceLabel}</span>
                 </div>
               </div>
             `;
@@ -1878,40 +1877,72 @@ HTML_CONTENT = """<!DOCTYPE html>
               iconAnchor: [0, 0]
             });
 
-            const marker = L.marker([finalLat, finalLng], {
-              icon: customIcon,
-              zIndexOffset: isActive ? 1000 : 0
-            });
+            const marker = L.marker([finalLat, finalLng], { icon: customIcon });
 
             marker.on('click', () => {
               openDetail(item);
             });
 
+            nextTick(() => {
+              const el = marker.getElement();
+              if (el) {
+                el.addEventListener('keydown', (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openDetail(item);
+                  }
+                });
+              }
+            });
+
             marker.addTo(leafletMarkersGroup);
+            markerMap.set(item.id, marker);
           });
+        }
+
+        // 监听 activeEventId：仅通过 ClassList 极速切换 active，实现 0 DOM 重绘、60fps 满帧
+        watch(activeEventId, (newId, oldId) => {
+          if (oldId && markerMap.has(oldId)) {
+            const oldMarker = markerMap.get(oldId);
+            oldMarker.setZIndexOffset(0);
+            const el = oldMarker.getElement();
+            if (el) el.classList.remove('active');
+          }
+
+          if (newId && markerMap.has(newId)) {
+            const newMarker = markerMap.get(newId);
+            newMarker.setZIndexOffset(1000);
+            const el = newMarker.getElement();
+            if (el) el.classList.add('active');
+          }
+        });
+
+
+        function flyToWithOffset(lat, lng, zoom = 15) {
+          if (!leafletMap) return;
+          const isDesktop = window.innerWidth >= 768;
+          const targetZoom = zoom || leafletMap.getZoom();
+          const pt = leafletMap.project([lat, lng], targetZoom);
+          let offsetX = 0, offsetY = 0;
+          if (isDesktop && drawerOpen.value) {
+            offsetX = 210;
+          } else if (!isDesktop && drawerOpen.value) {
+            offsetY = window.innerHeight * 0.25;
+          }
+          const offsetPt = L.point(pt.x + offsetX, pt.y + offsetY);
+          const centerLatLng = leafletMap.unproject(offsetPt, targetZoom);
+          leafletMap.flyTo(centerLatLng, targetZoom, { duration: 0.8, easeLinearity: 0.25 });
         }
 
         function focusEvent(item) {
           activeEventId.value = item.id;
-          if (leafletMap) {
-            leafletMap.flyTo([item.lat, item.lng], 15, {
-              duration: 0.8,
-              easeLinearity: 0.25
-            });
-          }
-          syncMarkers();
+          flyToWithOffset(item.lat, item.lng, 15);
         }
 
         function openDetail(item) {
           activeEventId.value = item.id;
           detailItem.value = item;
-          if (leafletMap) {
-            leafletMap.flyTo([item.lat, item.lng], 15, {
-              duration: 0.8,
-              easeLinearity: 0.25
-            });
-          }
-          syncMarkers();
+          flyToWithOffset(item.lat, item.lng, 15);
           scrollToCard(item.id);
         }
 

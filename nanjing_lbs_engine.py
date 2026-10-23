@@ -5,6 +5,7 @@
 严格对齐《南京地区同城活动抓取与时空可视化系统》表 2 ~ 表 5 契约。
 """
 
+import calendar
 import datetime
 import hashlib
 import json
@@ -19,9 +20,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
-BASE_DIR = Path(r"E:\usage")
-SQLITE_PATH = BASE_DIR / "local.db"
-VAULT_DIR = Path(r"E:\Note storage\IOT")
+BASE_DIR = Path(os.environ.get("BASE_DIR", Path(__file__).resolve().parent))
+SQLITE_PATH = Path(os.environ.get("DB_PATH", BASE_DIR / "local.db"))
+VAULT_DIR = Path(os.environ.get("VAULT_DIR", r"E:\Note storage\IOT"))
 DB_FOLDER = "05_社媒情报库"
 
 # 表 4：南京 11 行政区划 + 全城通用 GCJ-02 基准坐标
@@ -163,6 +164,9 @@ def _deterministic_jitter(seed_str: str) -> Tuple[float, float]:
     return round(dx, 6), round(dy, 6)
 
 
+_AMAP_GEOCODE_CACHE: Dict[str, Tuple[str, float, float, str]] = {}
+
+
 def geocode_nanjing(
     address_text: str, title: str = "", summary: str = "", seed_id: str = ""
 ) -> Tuple[str, float, float, str]:
@@ -173,6 +177,9 @@ def geocode_nanjing(
     combined = f"{address_text} {title} {summary}"
     amap_key = os.environ.get("AMAP_WEB_KEY", "").strip()
     if amap_key and address_text and not any(k in address_text for k in ["APP", "线上", "支付宝", "微信", "小红书"]):
+        cache_key = address_text.strip()
+        if cache_key in _AMAP_GEOCODE_CACHE:
+            return _AMAP_GEOCODE_CACHE[cache_key]
         try:
             q_addr = urllib.parse.quote(f"南京市{address_text}")
             url = f"https://restapi.amap.com/v3/geocode/geo?key={amap_key}&city=%E5%8D%97%E4%BA%AC&address={q_addr}"
@@ -188,7 +195,9 @@ def geocode_nanjing(
                         dist = g.get("district") or "玄武区"
                         if isinstance(dist, list):
                             dist = "玄武区"
-                        return dist, round(float(lng_s), 6), round(float(lat_s), 6), "amap_api"
+                        res = (dist, round(float(lng_s), 6), round(float(lat_s), 6), "amap_api")
+                        _AMAP_GEOCODE_CACHE[cache_key] = res
+                        return res
         except Exception:
             pass
 
@@ -251,26 +260,39 @@ def infer_sub_category(category: str, title: str, benefit: str, summary: str) ->
 
 
 def parse_lifecycle_dates(
-    event_time_text: str, publish_date: str = "2026-10-20"
+    event_time_text: str, publish_date: Optional[str] = None
 ) -> Tuple[str, str, str, str]:
     """
     从 event_time_text 提取结构化日期 start_date / end_date (YYYY-MM-DD)
     以及标准 ISO8601 起止时间戳 (start_iso, end_iso)
+    使用 calendar 模块严格计算当月实际最大天数，杜绝 2月30日等非法日期。
     """
     txt = (event_time_text or "").strip()
-    pub = (publish_date or "2026-10-20")[:10]
+    today_dt = datetime.date.today()
+    pub = (publish_date or today_dt.isoformat())[:10]
 
-    # 提取年份，默认 2026
+    # 提取年份，优先正则匹配，次选 publish_date 前 4 位，兜底当前年份
     year_m = re.search(r"(202\d)年?", txt)
-    year = int(year_m.group(1)) if year_m else 2026
+    if year_m:
+        year = int(year_m.group(1))
+    elif pub and pub[:4].isdigit():
+        year = int(pub[:4])
+    else:
+        year = datetime.datetime.now().year
+
+    def _format_safe_date(y: int, m: int, d: int) -> str:
+        m_safe = max(1, min(12, m))
+        _, max_day = calendar.monthrange(y, m_safe)
+        d_safe = max(1, min(max_day, d))
+        return f"{y}-{m_safe:02d}-{d_safe:02d}"
 
     # 模式1: 完整范围 M1月D1日 - M2月D2日 或 M1.D1 - M2.D2 或 M1/D1 - M2/D2
     m1 = re.findall(r"(\d{1,2})\s*[月./]\s*(\d{1,2})\s*日?", txt)
     if len(m1) >= 2:
         mon1, day1 = int(m1[0][0]), int(m1[0][1])
         mon2, day2 = int(m1[1][0]), int(m1[1][1])
-        s_date = f"{year}-{mon1:02d}-{day1:02d}"
-        e_date = f"{year}-{mon2:02d}-{day2:02d}"
+        s_date = _format_safe_date(year, mon1, day1)
+        e_date = _format_safe_date(year, mon2, day2)
         return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T18:00:00+08:00"
 
     # 模式2: 同月跨日 M月D1日 - D2日 (如 10月23日—25日, 10月15日-30日)
@@ -278,8 +300,8 @@ def parse_lifecycle_dates(
     if m2:
         mon = int(m2.group(1))
         d1, d2 = int(m2.group(2)), int(m2.group(3))
-        s_date = f"{year}-{mon:02d}-{d1:02d}"
-        e_date = f"{year}-{mon:02d}-{d2:02d}"
+        s_date = _format_safe_date(year, mon, d1)
+        e_date = _format_safe_date(year, mon, d2)
         return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T18:00:00+08:00"
 
     # 模式3: 单日 M月D日 (如 10月18日, 10月23日)
@@ -287,13 +309,11 @@ def parse_lifecycle_dates(
     if m3:
         mon = int(m3.group(1))
         d = int(m3.group(2))
-        s_date = f"{year}-{mon:02d}-{d:02d}"
+        s_date = _format_safe_date(year, mon, d)
         if any(k in txt for k in ["起", "开园", "开展", "启幕", "开幕"]):
-            e_date = (
-                f"{year}-{mon:02d}-31"
-                if mon in (1, 3, 5, 7, 8, 10, 12)
-                else f"{year}-{mon:02d}-30"
-            )
+            mon_safe = max(1, min(12, mon))
+            _, last_day = calendar.monthrange(year, mon_safe)
+            e_date = _format_safe_date(year, mon_safe, last_day)
         else:
             e_date = s_date
         return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T20:00:00+08:00"
@@ -303,13 +323,24 @@ def parse_lifecycle_dates(
     if m4:
         mon = int(m4.group(1))
         d = int(m4.group(2))
-        s_date = f"{year}-{mon:02d}-01"
-        e_date = f"{year}-{mon:02d}-{d:02d}"
+        s_date = _format_safe_date(year, mon, 1)
+        e_date = _format_safe_date(year, mon, d)
         return s_date, e_date, f"{s_date}T00:00:00+08:00", f"{e_date}T23:59:59+08:00"
 
     # 兜底：基于发布日或默认当月
-    s_date = pub if re.match(r"^\d{4}-\d{2}-\d{2}$", pub) else "2026-10-01"
-    e_date = "2026-10-31"
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", pub):
+        s_date = pub
+        try:
+            dt_pub = datetime.date.fromisoformat(pub)
+            _, last_d = calendar.monthrange(dt_pub.year, dt_pub.month)
+            e_date = f"{dt_pub.year}-{dt_pub.month:02d}-{last_d:02d}"
+        except Exception:
+            _, last_d = calendar.monthrange(year, today_dt.month)
+            e_date = f"{year}-{today_dt.month:02d}-{last_d:02d}"
+    else:
+        s_date = today_dt.isoformat()
+        _, last_d = calendar.monthrange(today_dt.year, today_dt.month)
+        e_date = f"{today_dt.year}-{today_dt.month:02d}-{last_d:02d}"
     return s_date, e_date, f"{s_date}T09:00:00+08:00", f"{e_date}T21:00:00+08:00"
 
 
@@ -387,24 +418,28 @@ def are_events_duplicate(item_a: Dict[str, Any], item_b: Dict[str, Any]) -> bool
     3. 标题核心关键词 2-gram 相似度 >= 0.35 或相互包含
     """
     dist_km = haversine_km(item_a["lng"], item_a["lat"], item_b["lng"], item_b["lat"])
-    same_address = bool(
-        item_a.get("address")
-        and item_b.get("address")
-        and (
-            item_a["address"] in item_b["address"]
-            or item_b["address"] in item_a["address"]
-        )
-    )
+    generic_addrs = {
+        "南京", "南京市", "江苏南京", "主城区", "线上", "同城", "南京同城",
+        "全国", "线上app/全国通用", "线上app", "线上活动", "江苏省南京市"
+    }
+    addr_a = (item_a.get("address") or "").strip()
+    addr_b = (item_b.get("address") or "").strip()
+    same_address = False
+    if len(addr_a) >= 4 and len(addr_b) >= 4:
+        if addr_a.lower() not in generic_addrs and addr_b.lower() not in generic_addrs:
+            same_address = (addr_a in addr_b) or (addr_b in addr_a)
+
     same_venue = (
         dist_km <= 0.35 and item_a.get("district") == item_b.get("district")
     ) or same_address
     if not same_venue:
         return False
 
-    s_a = (item_a.get("start_date") or item_a.get("start_time") or "2026-10-01")[:10]
-    e_a = (item_a.get("end_date") or item_a.get("end_time") or "2026-10-31")[:10]
-    s_b = (item_b.get("start_date") or item_b.get("start_time") or "2026-10-01")[:10]
-    e_b = (item_b.get("end_date") or item_b.get("end_time") or "2026-10-31")[:10]
+    today_iso = datetime.date.today().isoformat()
+    s_a = (item_a.get("start_date") or item_a.get("start_time") or today_iso)[:10]
+    e_a = (item_a.get("end_date") or item_a.get("end_time") or today_iso)[:10]
+    s_b = (item_b.get("start_date") or item_b.get("start_time") or today_iso)[:10]
+    e_b = (item_b.get("end_date") or item_b.get("end_time") or today_iso)[:10]
     if e_a < s_b or e_b < s_a:
         return False
 
@@ -533,10 +568,14 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
     1. 解析生命周期精确起止日期 (start_date / end_date)
     2. 智能聚合去重 (Deduplication)：同场馆同时间段多笔记聚合为主条目，其余追加至 extra_sources
     3. 把 district / lng / lat / sub_category / start_date / end_date 写回每篇 Obsidian .md 的 YAML 属性
+    4. 采用安全增量 Upsert 事务，严禁无条件删库或因外部文件丢失而连带删库。
     """
     conn = get_db_connection(SQLITE_PATH)
     ensure_nj_events_table(conn)
-    conn.execute("DELETE FROM nj_events")
+
+    vault_accessible = VAULT_DIR.exists()
+    if not vault_accessible:
+        print(f"[!] Warning: VAULT_DIR ({VAULT_DIR}) 不存在或脱机，跳过本地 Markdown 检查与回写，完全基于 SQLite 现有数据安全同步。")
 
     rows = conn.execute("SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC").fetchall()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -552,10 +591,10 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
         obsidian_path = d.get("obsidian_path") or ""
         md_file = VAULT_DIR / obsidian_path
 
-        # 清理重复 item_* 或非南京无关噪声数据
-        if post_id.startswith("item_") or any(nk in title for nk in noise_keywords):
+        # 仅清理明确命中的非南京无意义纯噪声
+        if any(nk in title for nk in noise_keywords):
             conn.execute("DELETE FROM nanjing_deals_events WHERE post_id = ?", (post_id,))
-            if any(nk in title for nk in noise_keywords) and md_file.exists():
+            if vault_accessible and md_file.exists():
                 try:
                     md_file.unlink()
                 except Exception:
@@ -568,36 +607,33 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
         seen_paths.add(obsidian_path)
         seen_titles.add(title)
         category = d["category"]
-        event_time_text = d.get("event_time") or "2026年10月近期"
+        event_time_text = d.get("event_time") or "近期同城"
         address = d.get("location") or "南京主城区"
         benefit = d.get("benefit") or "免费/详见攻略"
         action_guide = d.get("action_guide") or "见要点说明"
         summary = d.get("summary") or title
         platform = d.get("platform") or "微信公众号"
         author = d.get("author") or "南京同城"
-        publish_date = d.get("publish_date") or "2026-10-20"
+        publish_date = d.get("publish_date") or now_str[:10]
         source_url = d.get("url") or f"https://local.nanjing/{post_id}"
         obsidian_path = d.get("obsidian_path") or ""
         status = d.get("status") or "待去/待薅"
 
-        # 读取 Obsidian 笔记中的最新 status 与 key_points
-        if not md_file.exists():
-            conn.execute("DELETE FROM nanjing_deals_events WHERE post_id = ?", (post_id,))
-            continue
-
+        # 安全读取 Obsidian 笔记（如 Vault 可访问且文件存在），绝不因文件缺失而删库
         key_points: List[str] = []
-        try:
-            txt = md_file.read_text(encoding="utf-8")
-            m_yaml = re.match(r"^---\s*\n(.*?)\n---", txt, re.S)
-            if m_yaml:
-                fm = yaml.safe_load(m_yaml.group(1)) or {}
-                if fm.get("status"):
-                    status = fm["status"]
-            for ln in txt.splitlines():
-                if ln.strip().startswith("- "):
-                    key_points.append(ln.strip()[2:].strip())
-        except Exception:
-            pass
+        if vault_accessible and md_file.exists():
+            try:
+                txt = md_file.read_text(encoding="utf-8")
+                m_yaml = re.match(r"^---\s*\n(.*?)\n---", txt, re.S)
+                if m_yaml:
+                    fm = yaml.safe_load(m_yaml.group(1)) or {}
+                    if fm.get("status"):
+                        status = fm["status"]
+                for ln in txt.splitlines():
+                    if ln.strip().startswith("- "):
+                        key_points.append(ln.strip()[2:].strip())
+            except Exception:
+                pass
 
         district, lng, lat, geo_src = geocode_nanjing(address, title, summary, post_id)
         sub_cat = infer_sub_category(category, title, benefit, summary)
@@ -616,8 +652,8 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
             "likes": int(d.get("likes") or 0),
         }
 
-        # 同步回写 Obsidian YAML
-        if md_file.exists():
+        # 仅在 Vault 存在且文件可写时同步回写 YAML
+        if vault_accessible and md_file.exists():
             try:
                 txt = md_file.read_text(encoding="utf-8")
                 m_yaml = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", txt, re.S)
@@ -685,7 +721,6 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
         for primary in deduped_items:
             if are_events_duplicate(primary, cand):
                 matched = True
-                # 将被合并的次要笔记追加到主条目 extra_sources
                 source_meta = {
                     "post_id": cand["id"],
                     "title": cand["title"],
@@ -699,7 +734,6 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
                 }
                 primary.setdefault("extra_sources", []).append(source_meta)
 
-                # 合并要点与标签（去重保留）
                 for kp in cand.get("key_points", []):
                     if kp not in primary["key_points"]:
                         primary["key_points"].append(kp)
@@ -712,70 +746,70 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
             cand.setdefault("extra_sources", [])
             deduped_items.append(cand)
 
-    # 写入 SQLite nj_events
-    for it in deduped_items:
-        conn.execute(
-            """
-            INSERT INTO nj_events (
-                id, title, category, sub_category, start_date, end_date, start_time, end_time,
-                event_time_text, district, address, lng, lat, geom, benefit, is_free, action_guide,
-                summary, tags, extra_info, source_url, obsidian_path, status, extra_sources, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(source_url) DO UPDATE SET
-                title=excluded.title,
-                category=excluded.category,
-                sub_category=excluded.sub_category,
-                start_date=excluded.start_date,
-                end_date=excluded.end_date,
-                start_time=excluded.start_time,
-                end_time=excluded.end_time,
-                event_time_text=excluded.event_time_text,
-                district=excluded.district,
-                address=excluded.address,
-                lng=excluded.lng,
-                lat=excluded.lat,
-                geom=excluded.geom,
-                benefit=excluded.benefit,
-                is_free=excluded.is_free,
-                action_guide=excluded.action_guide,
-                summary=excluded.summary,
-                tags=excluded.tags,
-                extra_info=excluded.extra_info,
-                obsidian_path=excluded.obsidian_path,
-                status=excluded.status,
-                extra_sources=excluded.extra_sources,
-                updated_at=excluded.updated_at
-            """,
-            (
-                it["id"],
-                it["title"],
-                it["category"],
-                it["sub_category"],
-                it["start_date"],
-                it["end_date"],
-                it["start_time"],
-                it["end_time"],
-                it["event_time_text"],
-                it["district"],
-                it["address"],
-                it["lng"],
-                it["lat"],
-                it["geom"],
-                it["benefit"],
-                1 if it["is_free"] else 0,
-                it["action_guide"],
-                it["summary"],
-                json.dumps(it["tags"], ensure_ascii=False),
-                json.dumps(it["extra_info"], ensure_ascii=False),
-                it["source_url"],
-                it["obsidian_path"],
-                it["status"],
-                json.dumps(it["extra_sources"], ensure_ascii=False),
-                now_str,
-            ),
-        )
+    # 安全事务写入 SQLite nj_events (基于 Upsert，杜绝数据清空断档)
+    with conn:
+        for it in deduped_items:
+            conn.execute(
+                """
+                INSERT INTO nj_events (
+                    id, title, category, sub_category, start_date, end_date, start_time, end_time,
+                    event_time_text, district, address, lng, lat, geom, benefit, is_free, action_guide,
+                    summary, tags, extra_info, source_url, obsidian_path, status, extra_sources, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_url) DO UPDATE SET
+                    title=excluded.title,
+                    category=excluded.category,
+                    sub_category=excluded.sub_category,
+                    start_date=excluded.start_date,
+                    end_date=excluded.end_date,
+                    start_time=excluded.start_time,
+                    end_time=excluded.end_time,
+                    event_time_text=excluded.event_time_text,
+                    district=excluded.district,
+                    address=excluded.address,
+                    lng=excluded.lng,
+                    lat=excluded.lat,
+                    geom=excluded.geom,
+                    benefit=excluded.benefit,
+                    is_free=excluded.is_free,
+                    action_guide=excluded.action_guide,
+                    summary=excluded.summary,
+                    tags=excluded.tags,
+                    extra_info=excluded.extra_info,
+                    obsidian_path=excluded.obsidian_path,
+                    status=excluded.status,
+                    extra_sources=excluded.extra_sources,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    it["id"],
+                    it["title"],
+                    it["category"],
+                    it["sub_category"],
+                    it["start_date"],
+                    it["end_date"],
+                    it["start_time"],
+                    it["end_time"],
+                    it["event_time_text"],
+                    it["district"],
+                    it["address"],
+                    it["lng"],
+                    it["lat"],
+                    it["geom"],
+                    it["benefit"],
+                    1 if it["is_free"] else 0,
+                    it["action_guide"],
+                    it["summary"],
+                    json.dumps(it["tags"], ensure_ascii=False),
+                    json.dumps(it["extra_info"], ensure_ascii=False),
+                    it["source_url"],
+                    it["obsidian_path"],
+                    it["status"],
+                    json.dumps(it["extra_sources"], ensure_ascii=False),
+                    now_str,
+                ),
+            )
 
-    conn.commit()
     conn.close()
     return deduped_items
 

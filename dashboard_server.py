@@ -19,6 +19,7 @@
   6. 完整 CORS 全开放跨域支持 (Origin: *, Preflight 204)
 """
 
+import calendar
 import datetime
 import hashlib
 import json
@@ -44,15 +45,42 @@ import yaml
 import nanjing_lbs_engine
 import social_obsidian_sync
 
-# 核心路径配置
-BASE_DIR = Path(r"E:\usage")
-SQLITE_PATH = BASE_DIR / "local.db"
-VAULT_DIR = Path(r"E:\Note storage\IOT")
-FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
-SYNC_SCRIPT = BASE_DIR / "social_obsidian_sync.py"
+# 核心路径配置 (解耦环境变量与跨平台支持，支持 Docker 容器化挂载)
+BASE_DIR = Path(os.environ.get("BASE_DIR", Path(__file__).resolve().parent))
+SQLITE_PATH = Path(os.environ.get("DB_PATH", BASE_DIR / "local.db"))
+VAULT_DIR = Path(os.environ.get("VAULT_DIR", r"E:\Note storage\IOT"))
+FRONTEND_DIST = Path(os.environ.get("FRONTEND_DIST", BASE_DIR / "frontend" / "dist"))
+SYNC_SCRIPT = Path(os.environ.get("SYNC_SCRIPT", BASE_DIR / "social_obsidian_sync.py"))
 
 SERVER_START_TIME = time.time()
 SERVER_VERSION = "2.5.0-enterprise"
+
+# 安全与流量防护配置
+MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB 请求体上限，防 DoS OOM 攻击
+API_TOKEN = os.environ.get("DASHBOARD_API_TOKEN", "").strip()
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+    if o.strip()
+]
+
+
+def safe_float(val: Any, default: float, name: str = "") -> Tuple[float, Optional[str]]:
+    if val is None or val == "":
+        return default, None
+    try:
+        return float(val), None
+    except (ValueError, TypeError):
+        return default, f"参数 '{name}' 必须为有效浮点数 (当前值: '{val}')"
+
+
+def safe_int(val: Any, default: int, name: str = "") -> Tuple[int, Optional[str]]:
+    if val is None or val == "":
+        return default, None
+    try:
+        return int(val), None
+    except (ValueError, TypeError):
+        return default, f"参数 '{name}' 必须为有效整数 (当前值: '{val}')"
 
 ALL_11_DISTRICTS = [
     "玄武区",
@@ -76,6 +104,36 @@ def clean_text(val: Any) -> str:
     if not val:
         return ""
     return EMOJI_RE.sub("", str(val)).strip()
+
+
+def extract_short_title(title: str) -> str:
+    """提取 4~8 字精炼短标题，通用分词无硬编码特判，严格遵循词边界"""
+    if not title:
+        return "同城活动"
+    t = clean_text(title)
+    # 1. 去除无实质意义的括号内容 (如 "(南京)", "【南京】", "（第二期）")
+    t = re.sub(r"[\(（【\[][^\)）】\]]*[\)）】\]]", " ", t)
+    # 2. 去除年份、行政区、通用行政组织与前缀
+    t = re.sub(r"^(?:202[4-9]年?|南京(?:市)?|华东|首届|第[一二三四五六七八九十0-9]+届|中国(?:\(南京\))?)", "", t).strip()
+    # 3. 去除前缀营销词与分隔符 (如 "重磅|", "必看·", "速领！")
+    t = re.sub(r"^[^\s|｜:：!！·]{1,6}[|｜:：!！·]\s*", "", t).strip()
+    # 4. 按常见分隔符切分第一核心段落
+    parts = [p.strip() for p in re.split(r"[|｜:：!！·\s\-_—/]+", t) if p.strip()]
+    candidate = parts[0] if parts else t
+    if len(candidate) < 2 and len(parts) > 1:
+        candidate = parts[1]
+    # 5. 长度规范：最多 8 字符，若截断落在英文词中则安全回退
+    if len(candidate) > 8:
+        if bool(re.search(r"[a-zA-Z]", candidate[7:9])):
+            sub = candidate[:8]
+            m = re.search(r"[a-zA-Z]+$", sub)
+            if m and m.start() >= 3:
+                candidate = sub[:m.start()]
+            else:
+                candidate = sub
+        else:
+            candidate = candidate[:8]
+    return candidate.strip() or "同城活动"
 
 
 # ==============================================================================
@@ -138,6 +196,15 @@ METRICS = MetricsTracker()
 # ==============================================================================
 # 2. 统计计算器 (Compute Stats)
 # ==============================================================================
+def get_fallback_dates(now_date: Optional[datetime.date] = None) -> Tuple[str, str]:
+    """根据当前运行时动态计算兜底的起止日期区间 (当前自然月第一天与最后一天)"""
+    d = now_date or datetime.date.today()
+    s = d.isoformat()
+    _, last_day = calendar.monthrange(d.year, d.month)
+    e = f"{d.year}-{d.month:02d}-{last_day:02d}"
+    return s, e
+
+
 def compute_stats(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """生成统计分析所需的南京 11 区密度、类别占比、福利结构、生命周期分布与时间轴数据"""
     dist_counts = {d: 0 for d in ALL_11_DISTRICTS}
@@ -153,6 +220,7 @@ def compute_stats(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     free_count = 0
     coupon_count = 0
     paid_count = 0
+    today_iso = datetime.date.today().isoformat()
 
     for it in items:
         d = it.get("district") or "玄武区"
@@ -161,7 +229,7 @@ def compute_stats(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         cat_counts[c] = cat_counts.get(c, 0) + 1
         sc = clean_text(it.get("sub_category") or "综合")
         sub_cat_counts[sc] = sub_cat_counts.get(sc, 0) + 1
-        pdate = (it.get("publish_date") or "2026-10-20")[-5:]
+        pdate = (it.get("publish_date") or today_iso)[-5:]
         date_counts[pdate] = date_counts.get(pdate, 0) + 1
 
         ts = it.get("time_status") or "ongoing"
@@ -292,26 +360,34 @@ class EventCacheManager:
             }
 
     def _load_from_storage(self) -> None:
-        """从 SQLite 及 Obsidian Markdown 笔记中装载全量结构化数据"""
+        """
+        从 SQLite 高性能装载全量结构化数据：
+        纯基于 SQLite 本地数据库索引查询，彻底消除在锁内逐个读写磁盘 Markdown 文件的性能阻塞与雪崩风险。
+        """
         if not SQLITE_PATH.exists():
-            self._items = []
-            self._id_map = {}
-            self._stats = None
-            self._geojson = None
-            self._timestamp = time.time()
+            with self._lock:
+                self._items = []
+                self._id_map = {}
+                self._stats = None
+                self._geojson = None
+                self._timestamp = time.time()
             return
 
         conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
-        nanjing_lbs_engine.ensure_nj_events_table(conn)
         rows = conn.execute("SELECT * FROM nj_events ORDER BY updated_at DESC").fetchall()
         conn.close()
 
         if not rows:
-            self._items = nanjing_lbs_engine.migrate_and_sync_all()
-            self._id_map = {it["id"]: it for it in self._items}
-            self._stats = compute_stats(self._items)
-            self._geojson = to_geojson_feature_collection(self._items)
-            self._timestamp = time.time()
+            new_items = nanjing_lbs_engine.migrate_and_sync_all()
+            new_id_map = {it["id"]: it for it in new_items}
+            new_stats = compute_stats(new_items)
+            new_geojson = to_geojson_feature_collection(new_items)
+            with self._lock:
+                self._items = new_items
+                self._id_map = new_id_map
+                self._stats = new_stats
+                self._geojson = new_geojson
+                self._timestamp = time.time()
             return
 
         items: List[Dict[str, Any]] = []
@@ -321,7 +397,6 @@ class EventCacheManager:
         for r in rows:
             d = dict(r)
             obs_path = d.get("obsidian_path", "")
-            md_file = VAULT_DIR / obs_path
             extra: Dict[str, Any] = {}
             try:
                 extra = json.loads(d.get("extra_info") or "{}")
@@ -340,25 +415,8 @@ class EventCacheManager:
 
             key_points = extra.get("key_points") or []
             status = d.get("status") or "待去/待薅"
-
-            # 仅在 Obsidian 文件存在且有必要时读取最新 status
-            if md_file.exists():
-                try:
-                    txt = md_file.read_text(encoding="utf-8")
-                    m_yaml = re.match(r"^---\s*\n(.*?)\n---", txt, re.S)
-                    if m_yaml:
-                        fm = yaml.safe_load(m_yaml.group(1)) or {}
-                        if fm.get("status"):
-                            status = fm["status"]
-                    if not key_points:
-                        for ln in txt.splitlines():
-                            if ln.strip().startswith("- "):
-                                key_points.append(ln.strip()[2:].strip())
-                except Exception:
-                    pass
-
             event_time_text = clean_text(d.get("event_time_text") or "")
-            publish_date = extra.get("publish_date") or "2026-10-20"
+            publish_date = extra.get("publish_date") or today.isoformat()
 
             # 提取与计算生命周期起止日期及倒计时
             start_date = d.get("start_date") or ""
@@ -375,6 +433,7 @@ class EventCacheManager:
                 "id": d["id"],
                 "post_id": d["id"],
                 "title": clean_text(d["title"]),
+                "short_title": extract_short_title(d["title"]),
                 "category": clean_text(d["category"]),
                 "sub_category": clean_text(d.get("sub_category") or "综合"),
                 "start_date": start_date,
@@ -400,7 +459,7 @@ class EventCacheManager:
                 "platform": clean_text(extra.get("platform") or "微信公众号"),
                 "author": clean_text(extra.get("author") or "南京本地"),
                 "publish_date": publish_date,
-                "key_points": [clean_text(kp) for kp in key_points if clean_text(kp)],
+                "key_points": [clean_text(kp) for kp in key_points if clean_text(kp)] or [clean_text(d.get("summary") or "")],
                 "source_url": d.get("source_url") or "",
                 "url": d.get("source_url") or "",
                 "obsidian_path": obs_path,
@@ -412,11 +471,16 @@ class EventCacheManager:
             items.append(item)
             id_map[item["id"]] = item
 
-        self._items = items
-        self._id_map = id_map
-        self._stats = compute_stats(items)
-        self._geojson = to_geojson_feature_collection(items)
-        self._timestamp = time.time()
+        computed_stats = compute_stats(items)
+        computed_geojson = to_geojson_feature_collection(items)
+
+        # 最小化锁持有窗口：在完成全部内存运算后快速切换引用指针
+        with self._lock:
+            self._items = items
+            self._id_map = id_map
+            self._stats = computed_stats
+            self._geojson = computed_geojson
+            self._timestamp = time.time()
 
 
 EVENT_CACHE = EventCacheManager(ttl=15.0)
@@ -490,14 +554,18 @@ class SyncTaskManager:
 
     def _worker(self, job_id: str, mode: str, keyword: str, limit: int) -> None:
         t0 = time.time()
+        timeout_sec = int(os.environ.get("SYNC_SUBPROCESS_TIMEOUT", "180"))
         try:
             if mode == "full" or keyword:
                 cmd = [sys.executable, str(SYNC_SCRIPT), "--limit", str(limit)]
                 if keyword:
                     cmd.extend(["--keyword", keyword])
-                subprocess.run(
-                    cmd, capture_output=True, text=True, encoding="utf-8", timeout=60, check=True
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec
                 )
+                if proc.returncode != 0:
+                    err_snippet = (proc.stderr or proc.stdout or "").strip()[-300:]
+                    print(f"[!] Warning: 抓取子进程退出码非零 ({proc.returncode}): {err_snippet}", flush=True)
 
             nanjing_lbs_engine.migrate_and_sync_all()
             EVENT_CACHE.invalidate()
@@ -515,14 +583,17 @@ class SyncTaskManager:
                     }
                 )
         except Exception as e:
+            err_msg = str(e)
+            if isinstance(e, subprocess.TimeoutExpired):
+                err_msg = f"抓取子进程执行超时 ({timeout_sec}秒)"
             with self._lock:
                 self._current_job.update(
                     {
                         "status": "failed",
                         "end_time": datetime.datetime.now().isoformat(),
                         "duration_sec": round(time.time() - t0, 2),
-                        "message": f"任务执行失败: {str(e)}",
-                        "error": str(e),
+                        "message": f"任务执行失败: {err_msg}",
+                        "error": err_msg,
                     }
                 )
 
@@ -568,15 +639,18 @@ class DailyScheduler(threading.Thread):
 
     def run(self) -> None:
         while True:
-            now = datetime.datetime.now()
-            if now >= self.next_run_dt:
-                self.last_run_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                print(
-                    f"[{self.last_run_time}] [DailyScheduler] 触发每日 {self.target_hour:02d}:{self.target_minute:02d} 定时抓取与同步...",
-                    flush=True,
-                )
-                SYNC_MANAGER.submit_job(mode="full", limit=3)
-                self.next_run_dt = self._calc_next_run()
+            try:
+                now = datetime.datetime.now()
+                if now >= self.next_run_dt:
+                    self.last_run_time = now.strftime("%Y-%m-%d %H:%M:%S")
+                    print(
+                        f"[{self.last_run_time}] [DailyScheduler] 触发每日 {self.target_hour:02d}:{self.target_minute:02d} 定时抓取与同步...",
+                        flush=True,
+                    )
+                    SYNC_MANAGER.submit_job(mode="full", limit=3)
+                    self.next_run_dt = self._calc_next_run()
+            except Exception as e:
+                print(f"[DailyScheduler] 定时调度运行异常 (已自动恢复守护): {e}", flush=True)
             time.sleep(20)
 
 
@@ -695,11 +769,10 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
     if not source_url:
         source_url = f"https://local.nanjing/clip/{post_id}"
 
-    # 4. 生成规范 Obsidian Markdown 文件 (原子写入)
+    # 4. 生成规范 Obsidian Markdown 文件 (原子写入，脱机时容错降级)
     safe_name = social_obsidian_sync.sanitize_filename(f"[{cat[2:] if len(cat) > 2 else cat}] {title}")
     rel_path = f"05_社媒情报库/{safe_name}.md"
     md_file = VAULT_DIR / rel_path
-    md_file.parent.mkdir(parents=True, exist_ok=True)
 
     fm_data = {
         "category": cat,
@@ -747,13 +820,17 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
 
 {bullets_md}
 """
-    try:
-        with tempfile.NamedTemporaryFile("w", dir=md_file.parent, delete=False, encoding="utf-8") as tf:
-            tf.write(md_content)
-            temp_name = tf.name
-        os.replace(temp_name, md_file)
-    except Exception as e:
-        return False, f"Obsidian 文件写入失败: {str(e)}", None
+    if VAULT_DIR.exists():
+        try:
+            md_file.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile("w", dir=md_file.parent, delete=False, encoding="utf-8") as tf:
+                tf.write(md_content)
+                temp_name = tf.name
+            os.replace(temp_name, md_file)
+        except Exception as e:
+            print(f"[!] Warning: 剪藏写入 Obsidian Markdown 文件失败 ({e})，降级为仅入库 SQLite", flush=True)
+    else:
+        print("[!] Warning: VAULT_DIR 不存在或未挂载，跳过 Markdown 写入，直接存入 SQLite", flush=True)
 
     extra_obj = {
         "platform": platform,
@@ -884,8 +961,9 @@ def generate_ical_feed(events: List[Dict[str, Any]]) -> str:
             "expired": "已结束",
         }.get(time_status, "")
 
-        s_date_raw = (ev.get("start_date") or "2026-10-01")[:10].replace("-", "")
-        e_date_raw = (ev.get("end_date") or "2026-10-31")[:10].replace("-", "")
+        fb_s, fb_e = get_fallback_dates()
+        s_date_raw = (ev.get("start_date") or fb_s)[:10].replace("-", "")
+        e_date_raw = (ev.get("end_date") or fb_e)[:10].replace("-", "")
         dtstart = f"{s_date_raw}T090000"
         dtend = f"{e_date_raw}T180000"
 
@@ -997,9 +1075,10 @@ def filter_events(items: List[Dict[str, Any]], query_params: Dict[str, List[str]
 
     for it in items:
         # 1. 动态挂载/刷新生命周期状态
+        fb_s, fb_e = get_fallback_dates(today)
         days_left, time_status = nanjing_lbs_engine.compute_lifecycle(
-            it.get("start_date") or "2026-10-01",
-            it.get("end_date") or "2026-10-31",
+            it.get("start_date") or fb_s,
+            it.get("end_date") or fb_e,
             now_date=today,
         )
         it_copy = dict(it)
@@ -1073,39 +1152,258 @@ def filter_events(items: List[Dict[str, Any]], query_params: Dict[str, List[str]
 
 
 # ==============================================================================
-# 9. HTTP 协议处理器 (DashboardHandler)
+# 9. 参数化 SQLite 空间与多维检索引擎 (Indexed Query Engine)
+# ==============================================================================
+def query_events_from_db(query_params: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    """
+    通过参数化 SQL 查询直接命中 SQLite 索引（district, category, status, lat/lng 空间包围盒），
+    大幅降低内存消耗并加速多维时空检索。
+    """
+    today = datetime.date.today()
+    cat = (query_params.get("category") or ["ALL"])[0].strip()
+    dist = (query_params.get("district") or ["ALL"])[0].strip()
+    status = (query_params.get("status") or ["ALL"])[0].strip()
+    is_free_str = (query_params.get("is_free") or [""])[0].lower()
+    tag = (query_params.get("tag") or [""])[0].strip()
+    q = (query_params.get("q") or [""])[0].strip()
+
+    include_expired = (query_params.get("include_expired") or ["0"])[0].lower() in ("1", "true", "yes")
+    time_status_filter = (query_params.get("time_status") or ["ALL"])[0].strip().lower()
+
+    center_lng_s = (query_params.get("lng") or [""])[0]
+    center_lat_s = (query_params.get("lat") or [""])[0]
+    radius_s = (query_params.get("radius_km") or ["0"])[0]
+
+    use_spatial = False
+    center_lng, center_lat, radius_km = 118.7842, 32.0418, 0.0
+    min_lat, max_lat, min_lng, max_lng = -90.0, 90.0, -180.0, 180.0
+
+    try:
+        if center_lng_s and center_lat_s and float(radius_s) > 0:
+            center_lng = float(center_lng_s)
+            center_lat = float(center_lat_s)
+            radius_km = float(radius_s)
+            min_lat, max_lat, min_lng, max_lng = nanjing_lbs_engine.bounding_box_deg(
+                center_lat, center_lng, radius_km
+            )
+            use_spatial = True
+    except Exception:
+        use_spatial = False
+
+    sort_by = (query_params.get("sort_by") or [""])[0].strip().lower()
+    order = (query_params.get("order") or ["asc"])[0].strip().lower()
+
+    sql_parts = ["SELECT * FROM nj_events WHERE 1=1"]
+    sql_args: List[Any] = []
+
+    clean_cat = clean_text(cat)
+    if clean_cat and clean_cat != "ALL":
+        sql_parts.append("AND category = ?")
+        sql_args.append(clean_cat)
+    if dist and dist != "ALL":
+        sql_parts.append("AND district = ?")
+        sql_args.append(dist)
+    if status and status != "ALL":
+        sql_parts.append("AND status = ?")
+        sql_args.append(status)
+    if is_free_str in ("1", "true", "yes"):
+        sql_parts.append("AND is_free = 1")
+    elif is_free_str in ("0", "false", "no"):
+        sql_parts.append("AND is_free = 0")
+
+    # 空间包围盒粗筛直接下推至索引 idx_nj_events_coords (lat, lng)
+    if use_spatial:
+        sql_parts.append("AND (lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?)")
+        sql_args.extend([min_lat, max_lat, min_lng, max_lng])
+
+    # 关键词检索下推至 SQL 参数化 LIKE
+    if q:
+        sql_parts.append(
+            "AND (title LIKE ? OR summary LIKE ? OR address LIKE ? OR action_guide LIKE ? OR benefit LIKE ?)"
+        )
+        wildcard = f"%{q}%"
+        sql_args.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
+
+    sql_parts.append("ORDER BY updated_at DESC")
+    full_sql = " ".join(sql_parts)
+
+    conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
+    rows = conn.execute(full_sql, sql_args).fetchall()
+    conn.close()
+
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        d = dict(r)
+        obs_path = d.get("obsidian_path", "")
+        try:
+            extra = json.loads(d.get("extra_info") or "{}")
+        except Exception:
+            extra = {}
+        try:
+            tags = json.loads(d.get("tags") or "[]")
+        except Exception:
+            tags = []
+        try:
+            extra_sources = json.loads(d.get("extra_sources") or "[]")
+        except Exception:
+            extra_sources = []
+
+        start_date = d.get("start_date") or ""
+        end_date = d.get("end_date") or ""
+        days_left, time_status = nanjing_lbs_engine.compute_lifecycle(
+            start_date, end_date, now_date=today
+        )
+
+        if not include_expired and time_status == "expired":
+            continue
+        if time_status_filter not in ("all", "") and time_status != time_status_filter:
+            continue
+        if tag and tag not in tags:
+            continue
+
+        item = {
+            "id": d["id"],
+            "post_id": d["id"],
+            "title": clean_text(d["title"]),
+            "short_title": extract_short_title(d["title"]),
+            "category": clean_text(d["category"]),
+            "sub_category": clean_text(d.get("sub_category") or "综合"),
+            "start_date": start_date,
+            "end_date": end_date,
+            "days_left": days_left,
+            "time_status": time_status,
+            "start_time": d.get("start_time") or "",
+            "end_time": d.get("end_time") or "",
+            "event_time": clean_text(d.get("event_time_text") or ""),
+            "event_time_text": clean_text(d.get("event_time_text") or ""),
+            "district": clean_text(d.get("district") or "玄武区"),
+            "address": clean_text(d.get("address") or ""),
+            "location": clean_text(d.get("address") or ""),
+            "lng": float(d.get("lng") or 118.7977),
+            "lat": float(d.get("lat") or 32.0482),
+            "geom": d.get("geom") or "",
+            "benefit": clean_text(d.get("benefit") or ""),
+            "is_free": bool(d.get("is_free", 1)),
+            "action_guide": clean_text(d.get("action_guide") or ""),
+            "summary": clean_text(d.get("summary") or ""),
+            "tags": [clean_text(t) for t in tags if clean_text(t)],
+            "extra_info": extra,
+            "platform": clean_text(extra.get("platform") or "微信公众号"),
+            "author": clean_text(extra.get("author") or "南京本地"),
+            "publish_date": extra.get("publish_date") or today.isoformat(),
+            "key_points": [clean_text(kp) for kp in (extra.get("key_points") or []) if clean_text(kp)] or [clean_text(d.get("summary") or "")],
+            "source_url": d.get("source_url") or "",
+            "url": d.get("source_url") or "",
+            "obsidian_path": obs_path,
+            "obsidian_uri": f"obsidian://open?vault=IOT&file={quote(obs_path)}",
+            "status": clean_text(d.get("status") or "待去/待薅"),
+            "extra_sources": extra_sources,
+            "updated_at": d.get("updated_at") or "",
+        }
+
+        d_km = nanjing_lbs_engine.haversine_km(center_lng, center_lat, item["lng"], item["lat"])
+        if use_spatial and d_km > radius_km:
+            continue
+        item["distance_km"] = d_km
+        out.append(item)
+
+    if sort_by == "distance":
+        out.sort(key=lambda x: x.get("distance_km", 9999.0), reverse=(order == "desc"))
+    elif sort_by == "days_left":
+        out.sort(key=lambda x: x.get("days_left", 9999), reverse=(order == "desc"))
+    elif sort_by == "updated_at":
+        out.sort(key=lambda x: x.get("updated_at", ""), reverse=(order == "desc"))
+    elif sort_by == "title":
+        out.sort(key=lambda x: x.get("title", ""), reverse=(order == "desc"))
+    elif order in ("desc", "reverse", "逆序"):
+        out.reverse()
+
+    return out
+
+
+# ==============================================================================
+# 10. HTTP 协议处理器 (DashboardHandler)
 # ==============================================================================
 class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
 
-    def _send_json(self, data: Any, status: int = 200) -> None:
+    def _send_cors_headers(self) -> None:
+        origin = self.headers.get("Origin", "*")
+        if "*" in ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        elif origin in ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+        elif ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0])
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-API-Key, If-None-Match")
+        self.send_header("Access-Control-Expose-Headers", "ETag, Content-Length")
+        self.send_header("Access-Control-Max-Age", "86400")
+
+    def _send_json(self, data: Any, status: int = 200, check_etag: bool = False) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        if check_etag and status == 200:
+            etag = f'"{hashlib.md5(body).hexdigest()}"'
+            if_none_match = self.headers.get("If-None-Match", "").strip()
+            if if_none_match == etag:
+                self.send_response(304)
+                self._send_cors_headers()
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+                self.end_headers()
+                return
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self._send_cors_headers()
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "public, max-age=0, must-revalidate")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-        self.send_header("Access-Control-Max-Age", "86400")
+        self._send_cors_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def _check_auth(self) -> bool:
+        if not API_TOKEN:
+            return True
+        auth_hdr = self.headers.get("Authorization", "").strip()
+        api_key_hdr = self.headers.get("X-API-Key", "").strip()
+        token = ""
+        if auth_hdr.startswith("Bearer "):
+            token = auth_hdr[7:].strip()
+        elif auth_hdr:
+            token = auth_hdr
+        elif api_key_hdr:
+            token = api_key_hdr
+        return token == API_TOKEN
+
     def do_OPTIONS(self) -> None:
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
-        self.send_header("Access-Control-Max-Age", "86400")
+        self._send_cors_headers()
         self.end_headers()
 
     def do_GET(self) -> None:
+        try:
+            self._handle_get()
+        except Exception as e:
+            self._send_json({"ok": False, "error": f"Internal Server Error: {str(e)}"}, 500)
+
+    def _handle_get(self) -> None:
         METRICS.record_request()
         parsed = urlparse(self.path)
         qparams = parse_qs(parsed.query)
 
         # ----------------------------------------------------------------------
-        # 1. 静态资源路由 (Static Assets & SPA Frontpage)
+        # 1. 静态资源路由 (Static Assets & SPA Frontpage, 严格防路径穿越)
         # ----------------------------------------------------------------------
         if parsed.path in ("/", "/index.html"):
             dist_index = FRONTEND_DIST / "index.html"
@@ -1114,7 +1412,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 content = html_file.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
+                self._send_cors_headers()
                 self.send_header("Content-Length", str(len(content)))
                 self.end_headers()
                 self.wfile.write(content)
@@ -1123,32 +1421,53 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path.startswith("/assets/"):
-            filename = parsed.path.replace("/assets/", "")
-            target_file = FRONTEND_DIST / "assets" / filename
-            if not target_file.exists():
-                target_file = BASE_DIR / "assets" / filename
-            if target_file.exists() and target_file.is_file():
-                content = target_file.read_bytes()
-                mime = "application/octet-stream"
-                if filename.endswith(".js"):
-                    mime = "application/javascript; charset=utf-8"
-                elif filename.endswith(".css"):
-                    mime = "text/css; charset=utf-8"
-                elif filename.endswith(".svg"):
-                    mime = "image/svg+xml"
-                elif filename.endswith(".png"):
-                    mime = "image/png"
-                elif filename.endswith(".ico"):
-                    mime = "image/x-icon"
-                self.send_response(200)
-                self.send_header("Content-Type", mime)
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Cache-Control", "public, max-age=604800")
-                self.send_header("Content-Length", str(len(content)))
-                self.end_headers()
-                self.wfile.write(content)
-            else:
-                self._send_json({"error": "Asset not found"}, 404)
+            filename = parsed.path[len("/assets/"):].lstrip("/")
+            safe_target: Optional[Path] = None
+
+            # 遍历静态资源候选目录并严格验证路径必须在对应目录下
+            for base_dir in (FRONTEND_DIST / "assets", BASE_DIR / "assets"):
+                try:
+                    candidate = (base_dir / filename).resolve()
+                    base_resolved = base_dir.resolve()
+                    if candidate.is_relative_to(base_resolved) and candidate.is_file() and candidate.exists():
+                        safe_target = candidate
+                        break
+                except Exception:
+                    continue
+
+            if not safe_target:
+                # 若包含 .. 或路径遍历逃逸，返回 403 Forbidden
+                if ".." in filename or "/." in filename or "\\." in filename:
+                    self._send_json({"error": "Forbidden: Path traversal detected"}, 403)
+                else:
+                    self._send_json({"error": "Asset not found"}, 404)
+                return
+
+            content = safe_target.read_bytes()
+            mime = "application/octet-stream"
+            fn_lower = safe_target.name.lower()
+            if fn_lower.endswith(".js"):
+                mime = "application/javascript; charset=utf-8"
+            elif fn_lower.endswith(".css"):
+                mime = "text/css; charset=utf-8"
+            elif fn_lower.endswith(".svg"):
+                mime = "image/svg+xml"
+            elif fn_lower.endswith(".png"):
+                mime = "image/png"
+            elif fn_lower.endswith((".jpg", ".jpeg")):
+                mime = "image/jpeg"
+            elif fn_lower.endswith(".ico"):
+                mime = "image/x-icon"
+            elif fn_lower.endswith(".json"):
+                mime = "application/json; charset=utf-8"
+
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self._send_cors_headers()
+            self.send_header("Cache-Control", "public, max-age=604800")
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
             return
 
         # ----------------------------------------------------------------------
@@ -1184,16 +1503,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         if parsed.path == "/api/events/calendar.ics":
             all_items = EVENT_CACHE.get_all()
-            # 默认订阅所有“待去/待薅”且未过期的活动
             include_all = (qparams.get("all") or ["0"])[0].lower() in ("1", "true")
             include_expired = (qparams.get("include_expired") or ["0"])[0].lower() in ("1", "true")
 
             selected = []
             today = datetime.date.today()
+            fb_s, fb_e = get_fallback_dates(today)
             for it in all_items:
                 days_left, time_status = nanjing_lbs_engine.compute_lifecycle(
-                    it.get("start_date") or "2026-10-01",
-                    it.get("end_date") or "2026-10-31",
+                    it.get("start_date") or fb_s,
+                    it.get("end_date") or fb_e,
                     now_date=today,
                 )
                 if not include_all and it.get("status") != "待去/待薅":
@@ -1210,7 +1529,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/calendar; charset=utf-8")
             self.send_header("Content-Disposition", 'inline; filename="nanjing_events.ics"')
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._send_cors_headers()
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Content-Length", str(len(ical_content)))
             self.end_headers()
@@ -1240,11 +1559,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
             event_id = parsed.path.replace("/api/events/", "").strip("/")
             item = EVENT_CACHE.get_by_id(event_id)
             if item:
-                # 动态刷新生命周期
                 item_c = dict(item)
+                fb_s, fb_e = get_fallback_dates()
                 d_left, t_stat = nanjing_lbs_engine.compute_lifecycle(
-                    item_c.get("start_date") or "2026-10-01",
-                    item_c.get("end_date") or "2026-10-31",
+                    item_c.get("start_date") or fb_s,
+                    item_c.get("end_date") or fb_e,
                 )
                 item_c["days_left"] = d_left
                 item_c["time_status"] = t_stat
@@ -1257,10 +1576,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # 6. 空间邻近半径专业检索 (GET /api/events/nearby)
         # ----------------------------------------------------------------------
         if parsed.path == "/api/events/nearby":
-            center_lng = float((qparams.get("lng") or ["118.7842"])[0])
-            center_lat = float((qparams.get("lat") or ["32.0418"])[0])
-            radius_km = float((qparams.get("radius_km") or ["5.0"])[0])
-            limit = int((qparams.get("limit") or ["20"])[0])
+            center_lng, err_lng = safe_float((qparams.get("lng") or ["118.7842"])[0], 118.7842, "lng")
+            center_lat, err_lat = safe_float((qparams.get("lat") or ["32.0418"])[0], 32.0418, "lat")
+            radius_km, err_rad = safe_float((qparams.get("radius_km") or ["5.0"])[0], 5.0, "radius_km")
+            limit, err_lim = safe_int((qparams.get("limit") or ["20"])[0], 20, "limit")
+
+            for err in (err_lng, err_lat, err_rad, err_lim):
+                if err:
+                    self._send_json({"ok": False, "error": err}, 400)
+                    return
+
+            radius_km = max(0.1, min(radius_km, 100.0))
+            limit = max(1, min(limit, 200))
 
             qparams_copy = dict(qparams)
             qparams_copy["lng"] = [str(center_lng)]
@@ -1269,8 +1596,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             qparams_copy["sort_by"] = ["distance"]
             qparams_copy["order"] = ["asc"]
 
-            all_items = EVENT_CACHE.get_all()
-            filtered = filter_events(all_items, qparams_copy)
+            # 直接下推至参数化 SQLite 空间包围盒粗筛，再进行精确计算
+            filtered = query_events_from_db(qparams_copy)
             limited = filtered[:limit]
 
             self._send_json(
@@ -1281,7 +1608,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "count": len(limited),
                     "total_in_radius": len(filtered),
                     "items": limited,
-                }
+                },
+                check_etag=True,
             )
             return
 
@@ -1289,13 +1617,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # 7. 多维活动检索与分页列表 (GET /api/events | /api/items)
         # ----------------------------------------------------------------------
         if parsed.path in ("/api/events", "/api/items"):
-            all_items = EVENT_CACHE.get_all()
-            filtered = filter_events(all_items, qparams)
+            filtered = query_events_from_db(qparams)
+            all_items_count = len(EVENT_CACHE.get_all())
 
             page_s = (qparams.get("page") or [""])[0]
             if page_s.isdigit() and int(page_s) >= 1:
                 page = int(page_s)
-                page_size = int((qparams.get("page_size") or ["20"])[0])
+                page_size, _ = safe_int((qparams.get("page_size") or ["20"])[0], 20, "page_size")
                 page_size = max(1, min(page_size, 100))
                 total_count = len(filtered)
                 total_pages = math.ceil(total_count / page_size) if total_count > 0 else 1
@@ -1310,21 +1638,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "page_size": page_size,
                         "total_pages": total_pages,
                         "filtered_total": total_count,
-                        "total": len(all_items),
+                        "total": all_items_count,
                         "count": len(page_items),
                         "items": page_items,
                         "stats": compute_stats(filtered),
-                    }
+                    },
+                    check_etag=True,
                 )
             else:
                 self._send_json(
                     {
                         "ok": True,
                         "count": len(filtered),
-                        "total": len(all_items),
+                        "total": all_items_count,
                         "items": filtered,
                         "stats": compute_stats(filtered),
-                    }
+                    },
+                    check_etag=True,
                 )
             return
 
@@ -1332,26 +1662,52 @@ class DashboardHandler(BaseHTTPRequestHandler):
         # 8. PostGIS 兼容标准 GeoJSON (GET /api/events/geojson)
         # ----------------------------------------------------------------------
         if parsed.path == "/api/events/geojson":
-            all_items = EVENT_CACHE.get_all()
-            filtered = filter_events(all_items, qparams)
-            self._send_json(to_geojson_feature_collection(filtered))
+            filtered = query_events_from_db(qparams)
+            self._send_json(to_geojson_feature_collection(filtered), check_etag=True)
             return
 
         # ----------------------------------------------------------------------
         # 9. 图表统计数据 (GET /api/stats)
         # ----------------------------------------------------------------------
         if parsed.path == "/api/stats":
-            all_items = EVENT_CACHE.get_all()
-            filtered = filter_events(all_items, qparams)
-            self._send_json({"ok": True, "stats": compute_stats(filtered)})
+            filtered = query_events_from_db(qparams)
+            self._send_json({"ok": True, "stats": compute_stats(filtered)}, check_etag=True)
             return
 
         self._send_json({"error": f"Endpoint '{parsed.path}' not found"}, 404)
 
     def do_POST(self) -> None:
+        try:
+            self._handle_post()
+        except Exception as e:
+            self._send_json({"ok": False, "error": f"Internal Server Error: {str(e)}"}, 500)
+
+    def _handle_post(self) -> None:
         METRICS.record_request()
         parsed = urlparse(self.path)
-        length = int(self.headers.get("Content-Length", 0))
+
+        # 1. 严格防 DoS 与 Content-Length 上限检查
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            self._send_json({"ok": False, "error": "Invalid Content-Length header"}, 400)
+            return
+
+        if length < 0 or length > MAX_BODY_SIZE:
+            self._send_json(
+                {"ok": False, "error": f"Payload Too Large (最大允许 {MAX_BODY_SIZE} 字节，收到 {length} 字节)"},
+                413,
+            )
+            return
+
+        # 2. 敏感写操作鉴权拦截
+        if not self._check_auth():
+            self._send_json(
+                {"ok": False, "error": "Unauthorized: 未提供有效凭证 (Bearer Token 或 X-API-Key 错误)"},
+                401,
+            )
+            return
+
         raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         try:
             payload = json.loads(raw_body)
@@ -1408,7 +1764,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if parsed.path in ("/api/scrape", "/api/sync"):
             mode = payload.get("mode", "incremental").strip()
             keyword = payload.get("keyword", "").strip()
-            limit = int(payload.get("limit", 2))
+            limit, _ = safe_int(payload.get("limit", 2), 2, "limit")
+            limit = max(1, min(limit, 50))
             is_async = bool(payload.get("async", False))
 
             if mode == "incremental" and not keyword and not is_async:
@@ -1442,6 +1799,58 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self._send_json({"error": "Unknown endpoint"}, 404)
 
 
+# ==============================================================================
+# 11. 带有限长线程池与 Socket 超时保护的高性能服务器 (Bounded Server)
+# ==============================================================================
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """带有限长线程池 (max_workers=32) 与 Socket 超时保护 (15s) 的生产级服务器"""
+
+    def __init__(
+        self,
+        server_address: Tuple[str, int],
+        RequestHandlerClass,
+        max_workers: int = 32,
+        socket_timeout: float = 15.0,
+    ):
+        super().__init__(server_address, RequestHandlerClass)
+        self.max_workers = max_workers
+        self.socket_timeout = socket_timeout
+        self._semaphore = threading.BoundedSemaphore(max_workers)
+
+    def process_request(self, request, client_address):
+        try:
+            request.settimeout(self.socket_timeout)
+        except Exception:
+            pass
+
+        if not self._semaphore.acquire(blocking=True, timeout=5.0):
+            try:
+                msg = b'HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{"ok":false,"error":"Server overloaded"}\n'
+                request.sendall(msg)
+                request.shutdown(socket.SHUT_WR)
+            except Exception:
+                pass
+            finally:
+                self.close_request(request)
+            return
+
+        threading.Thread(
+            target=self._process_request_bounded,
+            args=(request, client_address),
+            daemon=True,
+            name=f"HTTPWorker_{int(time.time()*1000)%100000}",
+        ).start()
+
+    def _process_request_bounded(self, request, client_address):
+        try:
+            self.finish_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            self.close_request(request)
+            self._semaphore.release()
+
+
 def get_local_ips() -> List[str]:
     ips = []
     try:
@@ -1455,24 +1864,64 @@ def get_local_ips() -> List[str]:
 
 
 def main() -> None:
-    port = 8765
-    server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Nanjing LBS Platform Backend")
+    parser.add_argument(
+        "--host", default=os.environ.get("HOST", "0.0.0.0"), help="Host address to bind"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", "8765")),
+        help="Port to listen on",
+    )
+    args = parser.parse_args()
+
+    host = args.host
+    port = args.port
+
+    # 启动前执行一次数据库表结构与索引自检
+    try:
+        conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
+        nanjing_lbs_engine.ensure_nj_events_table(conn)
+        conn.close()
+    except Exception as e:
+        print(f"[!] Warning: 数据库初始自检异常: {e}", flush=True)
+
+    server = BoundedThreadingHTTPServer(
+        (host, port), DashboardHandler, max_workers=32, socket_timeout=15.0
+    )
     lan_ips = get_local_ips()
     # 启动每日 12:00 抓取调度器后台线程
     DAILY_SCHEDULER.start()
 
     print("=" * 64, flush=True)
     print(f"  Nanjing LBS Platform Backend ({SERVER_VERSION})", flush=True)
-    print(f"  - Bind Address:  0.0.0.0:{port}", flush=True)
+    print(f"  - Bind Address:  {host}:{port}", flush=True)
     print(f"  - Local URL:     http://127.0.0.1:{port}", flush=True)
     for ip in lan_ips:
         print(f"  - LAN URL:       http://{ip}:{port}", flush=True)
-    print(f"  - Daily Schedule: Every day at 12:00:00 (Next: {DAILY_SCHEDULER.next_run_dt.strftime('%Y-%m-%d %H:%M:%S')})", flush=True)
-    print("  - Lifecycle:     start_date / end_date / days_left / time_status Auto-Filter", flush=True)
+    print(
+        f"  - Daily Schedule: Every day at 12:00:00 (Next: {DAILY_SCHEDULER.next_run_dt.strftime('%Y-%m-%d %H:%M:%S')})",
+        flush=True,
+    )
+    print(
+        "  - Lifecycle:     start_date / end_date / days_left / time_status Auto-Filter",
+        flush=True,
+    )
     print("  - Deduplication: Smart Venue & Time Clustering -> extra_sources", flush=True)
     print(f"  - Apple iCal:    http://127.0.0.1:{port}/api/events/calendar.ics", flush=True)
     print("  - Quick Clip:    POST /api/events/clip (Structured Auto-Extraction)", flush=True)
-    print("  - CORS Status:   Fully Enabled (*, GET, POST, OPTIONS, PUT, DELETE)", flush=True)
+    if API_TOKEN:
+        print("  - Auth Status:   Enabled (Bearer Token / X-API-Key Protection)", flush=True)
+    else:
+        print(
+            "  - Auth Notice:   DASHBOARD_API_TOKEN is not set (Running in Open Dev Mode)",
+            flush=True,
+        )
+    print(f"  - Workers Pool:  Bounded 32 Worker Threads (Socket Timeout: 15s)", flush=True)
+    print(f"  - Max Body Size: {MAX_BODY_SIZE // (1024 * 1024)} MB (Anti-DoS Protected)", flush=True)
     print("=" * 64, flush=True)
     server.serve_forever()
 
