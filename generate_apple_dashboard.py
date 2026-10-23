@@ -1658,6 +1658,16 @@ HTML_CONTENT = r"""<!DOCTYPE html>
           };
         });
 
+        function escapeHtml(str) {
+          if (str == null) return '';
+          return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
         function getMarkerDotColor(category) {
           if (category === '南京展会') return '#FF9500';
           if (category === '羊毛福利') return '#34C759';
@@ -1857,11 +1867,13 @@ HTML_CONTENT = r"""<!DOCTYPE html>
             }
 
             const dotColor = getMarkerDotColor(item.category);
-            const shortName = item.short_title || getMarkerShortName(item.title);
-            const priceLabel = getMarkerPriceLabel(item);
+            const shortName = escapeHtml(item.short_title || getMarkerShortName(item.title));
+            const priceLabel = escapeHtml(getMarkerPriceLabel(item));
+            const safeTitle = escapeHtml(item.title);
+            const safeId = escapeHtml(item.id);
 
             const iconHtml = `
-              <div class="apple-marker" id="leaf-marker-${item.id}" tabindex="0" role="button" aria-label="${item.title} - ${priceLabel}">
+              <div class="apple-marker" id="leaf-marker-${safeId}" tabindex="0" role="button" aria-label="${safeTitle} - ${priceLabel}">
                 <div class="marker-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06] font-medium text-[11px] whitespace-nowrap cursor-pointer transition-all duration-300 bg-white/95 text-slate-800 hover:bg-white hover:shadow-md">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${dotColor}"></span>
                   <span class="marker-name font-semibold truncate max-w-[76px] text-slate-900">${shortName}</span>

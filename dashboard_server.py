@@ -22,6 +22,8 @@
 import calendar
 import datetime
 import hashlib
+import hmac
+import ipaddress
 import json
 import math
 import os
@@ -33,6 +35,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -57,12 +60,24 @@ SERVER_VERSION = "2.5.0-enterprise"
 
 # 安全与流量防护配置
 MAX_BODY_SIZE = 10 * 1024 * 1024  # 10MB 请求体上限，防 DoS OOM 攻击
+MAX_IMAGE_PROXY_BYTES = 10 * 1024 * 1024  # 10MB 图片代理抓取上限
 API_TOKEN = os.environ.get("DASHBOARD_API_TOKEN", "").strip()
 ALLOWED_ORIGINS = [
     o.strip()
     for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")
     if o.strip()
 ]
+
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """严格阻断 HTTP 301/302 重定向，防止利用开放重定向绕过 SSRF 白名单逃逸至内网"""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+IMAGE_PROXY_OPENER = urllib.request.build_opener(NoRedirectHandler)
+
+# 并发同步节流互斥锁
+SYNC_MUTEX = threading.Lock()
+LAST_SYNC_TIME = 0.0
 
 
 def safe_float(val: Any, default: float, name: str = "") -> Tuple[float, Optional[str]]:
@@ -374,8 +389,11 @@ class EventCacheManager:
             return
 
         conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
-        rows = conn.execute("SELECT * FROM nj_events ORDER BY updated_at DESC").fetchall()
-        conn.close()
+        nanjing_lbs_engine.ensure_nj_events_table(conn)
+        try:
+            rows = conn.execute("SELECT * FROM nj_events ORDER BY updated_at DESC").fetchall()
+        finally:
+            conn.close()
 
         if not rows:
             new_items = nanjing_lbs_engine.migrate_and_sync_all()
@@ -664,52 +682,57 @@ def update_item_status(post_id: str, new_status: str) -> Tuple[bool, str]:
     """更新活动状态，原子化重写 Obsidian Markdown YAML 并主动失效缓存"""
     METRICS.record_status_update()
     conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
-    row = conn.execute("SELECT obsidian_path FROM nj_events WHERE id = ?", (post_id,)).fetchone()
-    if not row:
-        row = conn.execute(
-            "SELECT obsidian_path FROM nanjing_deals_events WHERE post_id = ?", (post_id,)
-        ).fetchone()
+    try:
+        row = conn.execute("SELECT obsidian_path FROM nj_events WHERE id = ?", (post_id,)).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT obsidian_path FROM nanjing_deals_events WHERE post_id = ?", (post_id,)
+            ).fetchone()
 
-    if not row:
+        if not row:
+            return False, "未找到对应的活动记录 (ID 不存在)"
+
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with conn:
+            conn.execute(
+                "UPDATE nj_events SET status = ?, updated_at = ? WHERE id = ?",
+                (new_status, now_str, post_id),
+            )
+            conn.execute(
+                "UPDATE nanjing_deals_events SET status = ? WHERE post_id = ?",
+                (new_status, post_id),
+            )
+    finally:
         conn.close()
-        return False, "未找到对应的活动记录 (ID 不存在)"
 
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    conn.execute(
-        "UPDATE nj_events SET status = ?, updated_at = ? WHERE id = ?",
-        (new_status, now_str, post_id),
-    )
-    conn.execute(
-        "UPDATE nanjing_deals_events SET status = ? WHERE post_id = ?",
-        (new_status, post_id),
-    )
-    conn.commit()
-    conn.close()
-
-    obs_path = row["obsidian_path"]
-    md_file = VAULT_DIR / obs_path
-    if md_file.exists():
+    obs_path = (row["obsidian_path"] or "").strip()
+    if obs_path and VAULT_DIR.exists():
         try:
-            txt = md_file.read_text(encoding="utf-8")
-            m_yaml = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", txt, re.S)
-            if m_yaml:
-                fm = yaml.safe_load(m_yaml.group(1)) or {}
-                body = m_yaml.group(2)
-                fm["status"] = new_status
-                fm["updated_at"] = now_str
-                new_yaml = yaml.safe_dump(
-                    fm, allow_unicode=True, sort_keys=False, default_flow_style=False
-                ).strip()
-                new_content = f"---\n{new_yaml}\n---\n\n{body.lstrip()}"
-            else:
-                new_content = f"---\nstatus: {new_status}\nupdated_at: '{now_str}'\n---\n\n{txt}"
+            resolved_vault = VAULT_DIR.resolve()
+            safe_rel = obs_path.lstrip("/\\")
+            md_file = (resolved_vault / safe_rel).resolve()
+            # 严格防止路径逃逸（如 ../../windows 或 /etc/passwd）
+            if md_file.is_relative_to(resolved_vault) and md_file.exists():
+                txt = md_file.read_text(encoding="utf-8")
+                m_yaml = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", txt, re.S)
+                if m_yaml:
+                    fm = yaml.safe_load(m_yaml.group(1)) or {}
+                    body = m_yaml.group(2)
+                    fm["status"] = new_status
+                    fm["updated_at"] = now_str
+                    new_yaml = yaml.safe_dump(
+                        fm, allow_unicode=True, sort_keys=False, default_flow_style=False
+                    ).strip()
+                    new_content = f"---\n{new_yaml}\n---\n\n{body.lstrip()}"
+                else:
+                    new_content = f"---\nstatus: {new_status}\nupdated_at: '{now_str}'\n---\n\n{txt}"
 
-            with tempfile.NamedTemporaryFile(
-                "w", dir=md_file.parent, delete=False, encoding="utf-8"
-            ) as tf:
-                tf.write(new_content)
-                temp_name = tf.name
-            os.replace(temp_name, md_file)
+                with tempfile.NamedTemporaryFile(
+                    "w", dir=md_file.parent, delete=False, encoding="utf-8"
+                ) as tf:
+                    tf.write(new_content)
+                    temp_name = tf.name
+                os.replace(temp_name, md_file)
         except Exception:
             pass
 
@@ -842,72 +865,76 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
         "likes": 0,
     }
 
-    # 5. 双表入库
+    # 5. 双表安全事务入库
     conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO nanjing_deals_events
-        (post_id, category, title, event_time, location, benefit, action_guide,
-         summary, platform, author, publish_date, likes, status, url, obsidian_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            post_id,
-            cat,
-            title,
-            event_time_text,
-            location,
-            benefit,
-            action_guide,
-            summary,
-            platform,
-            author,
-            publish_date,
-            0,
-            "待去/待薅",
-            source_url,
-            rel_path,
-        ),
-    )
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO nanjing_deals_events
+                (post_id, category, title, event_time, location, benefit, action_guide,
+                 summary, platform, author, publish_date, likes, status, url, obsidian_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    post_id,
+                    cat,
+                    title,
+                    event_time_text,
+                    location,
+                    benefit,
+                    action_guide,
+                    summary,
+                    platform,
+                    author,
+                    publish_date,
+                    0,
+                    "待去/待薅",
+                    source_url,
+                    rel_path,
+                ),
+            )
 
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO nj_events (
-            id, title, category, sub_category, start_date, end_date, start_time, end_time,
-            event_time_text, district, address, lng, lat, geom, benefit, is_free, action_guide,
-            summary, tags, extra_info, source_url, obsidian_path, status, extra_sources, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            post_id,
-            title,
-            cat,
-            sub_cat,
-            start_date,
-            end_date,
-            start_iso,
-            end_iso,
-            event_time_text,
-            district,
-            location,
-            lng,
-            lat,
-            geom_wkt,
-            benefit,
-            1 if is_free else 0,
-            action_guide,
-            summary,
-            json.dumps(tags_list, ensure_ascii=False),
-            json.dumps(extra_obj, ensure_ascii=False),
-            source_url,
-            rel_path,
-            "待去/待薅",
-            "[]",
-            now_str,
-        ),
-    )
-    conn.commit()
-    conn.close()
+            # 先行清理同 ID 或同 URL 的历史记录，彻底规避双唯一约束冲突
+            conn.execute("DELETE FROM nj_events WHERE id = ? OR source_url = ?", (post_id, source_url))
+            conn.execute(
+                """
+                INSERT INTO nj_events (
+                    id, title, category, sub_category, start_date, end_date, start_time, end_time,
+                    event_time_text, district, address, lng, lat, geom, benefit, is_free, action_guide,
+                    summary, tags, extra_info, source_url, obsidian_path, status, extra_sources, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    post_id,
+                    title,
+                    cat,
+                    sub_cat,
+                    start_date,
+                    end_date,
+                    start_iso,
+                    end_iso,
+                    event_time_text,
+                    district,
+                    location,
+                    lng,
+                    lat,
+                    geom_wkt,
+                    benefit,
+                    1 if is_free else 0,
+                    action_guide,
+                    summary,
+                    json.dumps(tags_list, ensure_ascii=False),
+                    json.dumps(extra_obj, ensure_ascii=False),
+                    source_url,
+                    rel_path,
+                    "待去/待薅",
+                    "[]",
+                    now_str,
+                ),
+            )
+    finally:
+        conn.close()
 
     # 6. 失效缓存
     EVENT_CACHE.invalidate()
@@ -920,7 +947,7 @@ def clip_event(payload: Dict[str, Any]) -> Tuple[bool, str, Optional[Dict[str, A
 # ==============================================================================
 def generate_ical_feed(events: List[Dict[str, Any]]) -> str:
     """生成原生兼容 iOS / macOS 日历的 RFC 5545 iCalendar 标准订阅流"""
-    now_dt = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    now_dt = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -1228,8 +1255,10 @@ def query_events_from_db(query_params: Dict[str, List[str]]) -> List[Dict[str, A
     full_sql = " ".join(sql_parts)
 
     conn = nanjing_lbs_engine.get_db_connection(SQLITE_PATH)
-    rows = conn.execute(full_sql, sql_args).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(full_sql, sql_args).fetchall()
+    finally:
+        conn.close()
 
     out: List[Dict[str, Any]] = []
     for r in rows:
@@ -1391,7 +1420,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             token = auth_hdr
         elif api_key_hdr:
             token = api_key_hdr
-        return token == API_TOKEN
+        if not token:
+            return False
+        # 使用恒定时间对比防范计时侧信道攻击 (CWE-208)
+        return hmac.compare_digest(token.encode("utf-8"), API_TOKEN.encode("utf-8"))
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -1502,7 +1534,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": "Invalid or missing image URL"}, 400)
                 return
 
-            parsed_target = urlparse(target_url)
+            try:
+                parsed_target = urlparse(target_url)
+            except Exception:
+                self._send_json({"ok": False, "error": "Malformed image URL"}, 400)
+                return
+
+            # 禁止 userinfo 混淆 (如 http://user@host)
+            if parsed_target.username or parsed_target.password:
+                self._send_json({"ok": False, "error": "UserInfo credentials in URL not permitted"}, 400)
+                return
+
+            # 严格限制端口 (仅放行 80 与 443)
+            port = parsed_target.port
+            if port and port not in (80, 443):
+                self._send_json({"ok": False, "error": f"Port {port} not permitted for image proxy"}, 403)
+                return
+
             allowed_hosts = (
                 "qpic.cn",
                 "weixin.qq.com",
@@ -1511,10 +1559,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "unsplash.com",
                 "amap.com",
             )
-            target_host = parsed_target.hostname or ""
-            if not any(target_host == h or target_host.endswith("." + h) for h in allowed_hosts):
+            target_host = (parsed_target.hostname or "").lower()
+            if not target_host or not any(target_host == h or target_host.endswith("." + h) for h in allowed_hosts):
                 self._send_json({"ok": False, "error": "Target host not permitted by SSRF policy"}, 403)
                 return
+
+            # 阻断私有/回环/内网保留 IP (防 DNS Rebinding 与伪造内网 IP)
+            try:
+                ip_obj = ipaddress.ip_address(target_host)
+                if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                    self._send_json({"ok": False, "error": "Private or loopback IP not permitted"}, 403)
+                    return
+            except ValueError:
+                pass
 
             try:
                 headers = {
@@ -1526,9 +1583,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     headers["Referer"] = "https://www.xiaohongshu.com/"
 
                 req = urllib.request.Request(target_url, headers=headers)
-                with urllib.request.urlopen(req, timeout=8) as resp:
-                    img_data = resp.read()
-                    content_type = resp.headers.get("Content-Type", "image/jpeg")
+                # 使用自定义 NoRedirectHandler 打开，阻断通过 302 重定向逃逸至内网
+                with IMAGE_PROXY_OPENER.open(req, timeout=8) as resp:
+                    raw_ct = resp.headers.get("Content-Type", "image/jpeg")
+                    # 限流防 OOM：最多读取 MAX_IMAGE_PROXY_BYTES (10MB)
+                    img_data = resp.read(MAX_IMAGE_PROXY_BYTES + 1)
+                    if len(img_data) > MAX_IMAGE_PROXY_BYTES:
+                        self._send_json({"ok": False, "error": "Image payload exceeds maximum allowed size (10MB)"}, 413)
+                        return
+
+                # CRLF 清洗与合法 MIME 类型校验，防御 HTTP 响应拆分注入
+                clean_ct = raw_ct.split(";")[0].strip().lower()
+                clean_ct = re.sub(r"[\r\n]", "", clean_ct)
+                if not re.match(r"^image\/[a-z0-9\+\-\.]+$", clean_ct):
+                    clean_ct = "image/jpeg"
 
                 etag = f'"{hashlib.md5(img_data).hexdigest()}"'
                 if_none_match = self.headers.get("If-None-Match", "").strip()
@@ -1541,7 +1609,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     return
 
                 self.send_response(200)
-                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Type", clean_ct)
                 self._send_cors_headers()
                 self.send_header("ETag", etag)
                 self.send_header("Cache-Control", "public, max-age=86400")
@@ -1790,11 +1858,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             return
 
-        raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        # 3. 严格防畸形编码与安全 JSON 解析
         try:
-            payload = json.loads(raw_body)
-        except Exception:
-            payload = {}
+            raw_bytes = self.rfile.read(length) if length > 0 else b"{}"
+            raw_body = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            self._send_json({"ok": False, "error": "Request body must be valid UTF-8 string"}, 400)
+            return
+
+        try:
+            payload = json.loads(raw_body) if raw_body.strip() else {}
+            if not isinstance(payload, dict):
+                self._send_json({"ok": False, "error": "JSON payload must be a key-value object"}, 400)
+                return
+        except json.JSONDecodeError as e:
+            self._send_json({"ok": False, "error": f"Malformed JSON payload: {e.msg}"}, 400)
+            return
 
         # ----------------------------------------------------------------------
         # 1. 单条活动快速智能剪藏 (POST /api/events/clip)
@@ -1851,9 +1930,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
             is_async = bool(payload.get("async", False))
 
             if mode == "incremental" and not keyword and not is_async:
-                nanjing_lbs_engine.migrate_and_sync_all()
-                EVENT_CACHE.invalidate()
-                items = EVENT_CACHE.get_all(force_refresh=True)
+                global LAST_SYNC_TIME
+                acquired = SYNC_MUTEX.acquire(blocking=False)
+                if not acquired:
+                    items = EVENT_CACHE.get_all()
+                    self._send_json(
+                        {
+                            "ok": True,
+                            "mode": "incremental_fast",
+                            "message": "同步正在执行中，已返回当前最新数据",
+                            "count": len(items),
+                            "items": items,
+                            "stats": compute_stats(items),
+                        }
+                    )
+                    return
+                try:
+                    now_ts = time.time()
+                    if now_ts - LAST_SYNC_TIME < 3.0:
+                        items = EVENT_CACHE.get_all()
+                    else:
+                        nanjing_lbs_engine.migrate_and_sync_all()
+                        EVENT_CACHE.invalidate()
+                        items = EVENT_CACHE.get_all(force_refresh=True)
+                        LAST_SYNC_TIME = time.time()
+                finally:
+                    SYNC_MUTEX.release()
+
                 self._send_json(
                     {
                         "ok": True,

@@ -26,6 +26,11 @@ ai-intel-postgres/archive/
 
 # Playwright / test artifacts
 .playwright-mcp/
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
+frontend/test-reports/
 screenshot_apple_active_event.png
 screenshot_apple_marker_perfect.png
 screenshot_apple_satellite.png

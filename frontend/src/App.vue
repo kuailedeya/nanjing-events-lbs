@@ -29,6 +29,8 @@
             v-if="searchQuery"
             @click="searchQuery = ''"
             class="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer transition-colors"
+            title="清空搜索"
+            aria-label="清空搜索"
           >
             <X class="w-3 h-3" />
           </button>
@@ -301,6 +303,7 @@
         @click="recenterMap"
         class="p-2.5 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-slate-700 hover:text-slate-950 hover:bg-white transition cursor-pointer"
         title="复位新街口"
+        aria-label="复位新街口"
       >
         <Crosshair class="w-4 h-4" />
       </button>
@@ -312,6 +315,7 @@
         @click="recenterMap"
         class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center text-slate-700 active:scale-95 transition"
         title="复位新街口"
+        aria-label="复位新街口"
       >
         <Crosshair class="w-4 h-4" />
       </button>
@@ -320,6 +324,7 @@
         @click="cycleMapMode"
         class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center active:scale-95 transition"
         title="切换底图"
+        aria-label="切换底图"
       >
         <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: currentMapModeColor }"></span>
       </button>
@@ -331,6 +336,7 @@
           showRings ? 'bg-slate-950 text-white border-slate-950' : 'bg-white/90 text-slate-700 border-white/80'
         ]"
         title="辐射圈"
+        aria-label="辐射圈"
       >
         <Disc class="w-4 h-4" :class="showRings ? 'text-[#34C759]' : 'text-slate-400'" />
       </button>
@@ -342,6 +348,7 @@
           showHeatmap ? 'bg-slate-950 text-white border-slate-950' : 'bg-white/90 text-slate-700 border-white/80'
         ]"
         title="热力图"
+        aria-label="热力图"
       >
         <Flame class="w-4 h-4" :class="showHeatmap ? 'text-[#FF3B30]' : 'text-slate-400'" />
       </button>
@@ -350,6 +357,7 @@
         @click="openStatsModal"
         class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center text-slate-700 active:scale-95 transition"
         title="统计洞察"
+        aria-label="统计洞察"
       >
         <BarChart3 class="w-4 h-4 text-[#007AFF]" />
       </button>
@@ -417,6 +425,7 @@
                 @click="drawerOpen = false"
                 class="hidden md:flex p-1 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-black/[0.05] transition cursor-pointer"
                 title="折叠列表"
+                aria-label="折叠列表"
               >
                 <ChevronRight class="w-3.5 h-3.5" />
               </button>
@@ -488,13 +497,11 @@
         <div class="flex-1 min-h-0 overflow-y-auto p-4 no-scrollbar" id="cards-container">
           <!-- 视图 A: Bento 卡片流 -->
           <div v-if="currentViewMode === 'cards'" class="space-y-4">
-            <div
+            <article
               v-for="item in filteredEvents"
               :key="item.id"
               :id="'card-' + item.id"
               tabindex="0"
-              role="button"
-              :aria-label="item.title + '，' + (item.is_free ? '免票直入' : item.benefit)"
               @click="openDetail(item)"
               @keydown.enter="openDetail(item)"
               @keydown.space.prevent="openDetail(item)"
@@ -599,7 +606,7 @@
                   </button>
                 </div>
               </div>
-            </div>
+            </article>
           </div>
 
           <!-- 视图 B: 时间轴视图 (克制分组标题，彻底移除营销冗余文案) -->
@@ -620,13 +627,11 @@
               <div class="relative pl-7 space-y-3">
                 <div class="absolute left-[10px] top-3 bottom-3 w-[2px] bg-slate-300 rounded-full pointer-events-none"></div>
 
-                <div
+                <article
                   v-for="item in group.items"
                   :key="item.id"
                   :id="'timeline-card-' + item.id"
                   tabindex="0"
-                  role="button"
-                  :aria-label="item.title + '，' + (item.is_free ? '免票' : item.benefit)"
                   @click="openDetail(item)"
                   @keydown.enter="openDetail(item)"
                   @keydown.space.prevent="openDetail(item)"
@@ -675,7 +680,7 @@
                       </div>
                     </div>
                   </div>
-                </div>
+                </article>
               </div>
             </div>
           </div>
@@ -732,6 +737,7 @@
               @click="closeDetail"
               class="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-md text-white flex items-center justify-center transition-all cursor-pointer shadow-sm"
               title="关闭详情 (ESC)"
+              aria-label="关闭详情 (ESC)"
             >
               <X class="w-4 h-4" />
             </button>
@@ -870,6 +876,8 @@
           <button
             @click="closeStatsModal"
             class="w-8 h-8 rounded-full bg-black/[0.04] hover:bg-black/[0.08] text-slate-600 flex items-center justify-center transition cursor-pointer"
+            aria-label="关闭统计概览 (ESC)"
+            title="关闭统计概览 (ESC)"
           >
             <X class="w-4 h-4" />
           </button>
@@ -939,6 +947,16 @@ const DISTRICT_CENTERS = {
 };
 
 // 安全 Storage 存取防崩溃保护
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function safeGetFavorites() {
   try {
     const raw = localStorage.getItem('nj_lbs_favs');
@@ -1398,12 +1416,14 @@ function syncMarkersDiff() {
     }
 
     const dotColor = getMarkerDotColor(item.category);
-    const shortName = item.short_title || extractShortTitle(item.title);
-    const priceLabel = getMarkerPriceLabel(item);
+    const shortName = escapeHtml(item.short_title || extractShortTitle(item.title));
+    const priceLabel = escapeHtml(getMarkerPriceLabel(item));
+    const safeTitle = escapeHtml(item.title);
+    const safeId = escapeHtml(item.id);
 
-    // Airbnb 胶囊打点 + 无障碍 A11y
+    // Airbnb 胶囊打点 + 无障碍 A11y (防 DOM-XSS)
     const iconHtml = `
-      <div class="apple-marker" id="leaf-marker-${item.id}" tabindex="0" role="button" aria-label="${item.title} - ${priceLabel}">
+      <div class="apple-marker" id="leaf-marker-${safeId}" tabindex="0" role="button" aria-label="${safeTitle} - ${priceLabel}">
         <div class="marker-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06] font-medium text-[11px] whitespace-nowrap cursor-pointer transition-all duration-300 bg-white/95 text-slate-800 hover:bg-white hover:shadow-md">
           <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${dotColor}"></span>
           <span class="marker-name font-semibold truncate max-w-[76px] text-slate-900">${shortName}</span>

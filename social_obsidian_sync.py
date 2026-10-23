@@ -667,34 +667,43 @@ class ObsidianSummaryDB:
         except OSError:
             pass
 
-        conn = sqlite3.connect(self.sqlite_path)
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO nanjing_deals_events
-            (post_id, category, title, event_time, location, benefit, action_guide,
-             summary, platform, author, publish_date, likes, status, url, obsidian_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                rec["post_id"],
-                cat,
-                rec["title"],
-                rec["event_time"],
-                rec["location"],
-                rec["benefit"],
-                rec["action_guide"],
-                rec["summary"],
-                rec["platform"],
-                rec["author"],
-                rec["publish_date"],
-                int(rec.get("likes", 0)),
-                "待去/待薅",
-                rec["url"],
-                rel_path,
-            ),
-        )
-        conn.commit()
-        conn.close()
+        try:
+            self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        conn = sqlite3.connect(self.sqlite_path, timeout=15.0)
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO nanjing_deals_events
+                    (post_id, category, title, event_time, location, benefit, action_guide,
+                     summary, platform, author, publish_date, likes, status, url, obsidian_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        rec["post_id"],
+                        cat,
+                        rec["title"],
+                        rec["event_time"],
+                        rec["location"],
+                        rec["benefit"],
+                        rec["action_guide"],
+                        rec["summary"],
+                        rec["platform"],
+                        rec["author"],
+                        rec["publish_date"],
+                        int(rec.get("likes", 0)),
+                        "待去/待薅",
+                        rec["url"],
+                        rel_path,
+                    ),
+                )
+        finally:
+            conn.close()
         return rel_path
 
     def build_base_and_dashboard(self) -> None:

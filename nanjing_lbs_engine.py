@@ -522,7 +522,13 @@ def bounding_box_deg(lat: float, lng: float, radius_km: float) -> Tuple[float, f
 
 
 def get_db_connection(db_path: Path = SQLITE_PATH) -> sqlite3.Connection:
-    """获取优化配置后的 SQLite 连接（WAL 模式 + 内存临时表 + 5s 忙锁等待）"""
+    """获取优化配置后的 SQLite 连接（WAL 模式 + 内存临时表 + 10s 忙锁等待）"""
+    if isinstance(db_path, str):
+        db_path = Path(db_path)
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     conn = sqlite3.connect(db_path, timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL;")
@@ -537,6 +543,27 @@ def ensure_nj_events_table(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS nanjing_deals_events (
+            post_id         TEXT PRIMARY KEY,
+            category        TEXT,
+            title           TEXT,
+            event_time      TEXT,
+            location        TEXT,
+            benefit         TEXT,
+            action_guide    TEXT,
+            summary         TEXT,
+            platform        TEXT,
+            author          TEXT,
+            publish_date    TEXT,
+            likes           INTEGER,
+            status          TEXT,
+            url             TEXT,
+            obsidian_path   TEXT
+        )
+        """
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS nj_events (
@@ -603,6 +630,18 @@ def migrate_and_sync_all() -> List[Dict[str, Any]]:
         print(f"[!] Warning: VAULT_DIR ({VAULT_DIR}) 不存在或脱机，跳过本地 Markdown 检查与回写，完全基于 SQLite 现有数据安全同步。")
 
     rows = conn.execute("SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC").fetchall()
+    if not rows:
+        try:
+            from nanjing_seeds import NANJING_COMPREHENSIVE_SEEDS
+            import social_obsidian_sync
+            print(f"[*] 发现数据库为空，自动载入 {len(NANJING_COMPREHENSIVE_SEEDS)} 条基准全域活动数据...")
+            db = social_obsidian_sync.ObsidianSummaryDB(sqlite_path=SQLITE_PATH)
+            for s in NANJING_COMPREHENSIVE_SEEDS:
+                db.save_record(s)
+            rows = conn.execute("SELECT * FROM nanjing_deals_events ORDER BY publish_date DESC").fetchall()
+        except Exception as e:
+            print(f"[!] 基准数据自动填充提示: {e}")
+
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     raw_candidates: List[Dict[str, Any]] = []
     seen_paths = set()
