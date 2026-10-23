@@ -64,3 +64,4 @@
   - 展会/预警：系统橙 `#FF9500`
   - 过期/警示：系统红 `#FF3B30`
 - **零 Emoji 表情**：严禁在正式 UI 文本、标题与操作按钮中使用 Emoji，所有视觉符号必须由 Lucide 图标提供。
+- **文案与微标签降噪 (Microcopy & Label Discipline)**：Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining. Avoid unnecessary supporting text, descriptive copy, and redundant UI microcopy. 严禁冗余的辅助文字与次级解释性微标签，用界面本身的排版层级、对比与留白来解释功能。

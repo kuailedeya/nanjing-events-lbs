@@ -7,5 +7,6 @@ All frontend interfaces in this repository must strictly adhere to the Apple HIG
 2. **Layer Discipline**: Liquid glass (frosted acrylic) only for functional floating containers; content cards must remain solid white Apple Cards (`bg-white rounded-2xl border border-black/[0.04]`). Never put glass directly on content cards.
 3. **Bento Grid Cards**: Crisp cover image (`rounded-xl overflow-hidden h-36`), overlaid category & distance tags (`font-variant-numeric: tabular-nums`), title (`font-semibold text-slate-900`), and quick-action footer.
 4. **Airbnb Marker Pills**: Compact white pill with colored category dot; inverts to solid black (`bg-slate-950 text-white`) with snappy spring scale on active selection.
-5. **Color Budget**: ≤ 3% accent colors (`#007AFF`, `#34C759`, `#FF9500`, `#FF3B30`). Zero emojis, zero rainbow gradients.
-6. **Detailed Specification**: See [DESIGN_SYSTEM.md](file:///E:/usage/DESIGN_SYSTEM.md) for full parameters and copy-paste Tailwind recipes.
+5. **Microcopy & Label Discipline**: Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining. Avoid unnecessary supporting text, descriptive copy, and redundant UI microcopy.
+6. **Color Budget**: ≤ 3% accent colors (`#007AFF`, `#34C759`, `#FF9500`, `#FF3B30`). Zero emojis, zero rainbow gradients.
+7. **Detailed Specification**: See [DESIGN_SYSTEM.md](file:///E:/usage/DESIGN_SYSTEM.md) for full parameters and copy-paste Tailwind recipes.
