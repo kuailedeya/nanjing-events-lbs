@@ -392,93 +392,95 @@ HTML_CONTENT = """<!DOCTYPE html>
         
                 <!-- 固定头部：标题栏 + 视图切换 + 3维排序 + 瞬移栏 + 横向14天日历条 (flex-shrink-0) -->
         <div class="flex-shrink-0 z-10 bg-[#F5F5F7]/95 backdrop-blur-md">
-          <!-- Row 1: 标题 + [卡片/时间轴] 视图切换 + [距离/截止/最新] 排序 + 抽屉折叠 -->
-          <div class="px-4 pt-3.5 pb-2.5 flex items-center justify-between border-b border-black/[0.04] gap-2">
-            <div class="flex items-center gap-1.5 shrink-0">
+          <!-- Row 1: 标题 + [卡片/时间轴] 视图切换 + 待去标签 + 折叠抽屉 -->
+          <div class="px-4 pt-3.5 pb-2 flex items-center justify-between border-b border-black/[0.04]">
+            <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-slate-900 tracking-tight">南京精选</h2>
               <span class="text-xs font-semibold text-slate-400 tabular-nums">({{ filteredEvents.length }})</span>
               
               <!-- 视图切换：卡片 vs 时间轴 -->
-              <div class="ml-1 inline-flex rounded-lg bg-black/[0.05] p-0.5 border border-black/[0.04]">
+              <div class="inline-flex rounded-lg bg-black/[0.05] p-0.5 border border-black/[0.04]">
                 <button
                   @click="currentViewMode = 'cards'"
-                  class="px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
+                  class="px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
                   :class="currentViewMode === 'cards' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
-                  title="卡片网格视图"
+                  title="卡片网格流"
                 >
                   卡片
                 </button>
                 <button
                   @click="currentViewMode = 'timeline'"
-                  class="px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
+                  class="px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
                   :class="currentViewMode === 'timeline' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
-                  title="紧迫度时间轴视图"
+                  title="紧迫度时间轴"
                 >
                   时间轴
                 </button>
               </div>
 
-              <span v-if="showFavoritesOnly" class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">待去清单</span>
+              <span v-if="showFavoritesOnly" class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">待去清单</span>
             </div>
 
-            <!-- 右侧操作区：多维排序胶囊 + 视野联动 + 折叠抽屉 -->
-            <div class="flex items-center gap-1 shrink-0">
-              <!-- 3维排序切换胶囊 [距离最近 | 即将截止 | 最新收录] -->
-              <div class="inline-flex rounded-full bg-black/[0.04] p-0.5 border border-black/[0.04] text-[10.5px]">
-                <button
-                  @click="sortMode = 'distance'"
-                  class="px-2 py-0.5 rounded-full transition-all cursor-pointer"
-                  :class="sortMode === 'distance' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
-                  title="按距离市中心由近到远排序（优先市区核心活动）"
-                >
-                  距离最近
-                </button>
-                <button
-                  @click="sortMode = 'expiring'"
-                  class="px-2 py-0.5 rounded-full transition-all cursor-pointer"
-                  :class="sortMode === 'expiring' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
-                  title="按剩余天数排序"
-                >
-                  即将截止
-                </button>
-                <button
-                  @click="sortMode = 'latest'"
-                  class="px-2 py-0.5 rounded-full transition-all cursor-pointer"
-                  :class="sortMode === 'latest' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
-                  title="按发布时间排序"
-                >
-                  最新
-                </button>
-              </div>
-
-              <!-- 视野联动微开关 -->
-              <button
-                @click="toggleBoundsFilter"
-                class="inline-flex items-center gap-1 px-1.5 py-1 rounded-full text-[10.5px] font-medium transition-all cursor-pointer"
-                :class="boundsFilterEnabled ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/60 shadow-2xs' : 'bg-black/[0.04] text-slate-500 hover:text-slate-700'"
-                title="开启后仅展示当前地图可视矩形范围内的线下活动"
-              >
-                <span class="w-1.5 h-1.5 rounded-full" :class="boundsFilterEnabled ? 'bg-[#34C759]' : 'bg-slate-300'"></span>
-                <span>视野</span>
-              </button>
-
-              <!-- 折叠抽屉 -->
-              <button
-                @click="drawerOpen = !drawerOpen"
-                class="w-6 h-6 rounded-lg bg-white/70 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center transition shadow-2xs cursor-pointer ml-0.5"
-                :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
-              >
-                <svg :class="['w-3.5 h-3.5 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-            </div>
+            <!-- 右侧：收起抽屉按钮 -->
+            <button
+              @click="drawerOpen = !drawerOpen"
+              class="w-7 h-7 rounded-lg bg-white/80 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center transition shadow-2xs cursor-pointer border border-black/[0.04]"
+              :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
+            >
+              <svg :class="['w-3.5 h-3.5 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
           </div>
 
-          <!-- Row 2: 南京核心片区瞬移胶囊栏 -->
+          <!-- Row 2: 3维排序胶囊 [距离最近 | 即将截止 | 最新收录] + 视野联动微开关 -->
+          <div class="px-4 py-2 flex items-center justify-between border-b border-black/[0.04] bg-[#F5F5F7]/60">
+            <div class="inline-flex rounded-full bg-black/[0.04] p-0.5 border border-black/[0.04] text-[11px]">
+              <button
+                @click="sortMode = 'distance'"
+                class="px-2.5 py-0.5 rounded-full transition-all cursor-pointer"
+                :class="sortMode === 'distance' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
+                title="按距离市中心由近到远排序（优先市区核心活动）"
+              >
+                距离最近
+              </button>
+              <button
+                @click="sortMode = 'expiring'"
+                class="px-2.5 py-0.5 rounded-full transition-all cursor-pointer"
+                :class="sortMode === 'expiring' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
+                title="按剩余天数排序"
+              >
+                即将截止
+              </button>
+              <button
+                @click="sortMode = 'latest'"
+                class="px-2.5 py-0.5 rounded-full transition-all cursor-pointer"
+                :class="sortMode === 'latest' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
+                title="按发布时间排序"
+              >
+                最新
+              </button>
+            </div>
+
+            <!-- 视野联动微开关 -->
+            <button
+              @click="toggleBoundsFilter"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all cursor-pointer border"
+              :class="boundsFilterEnabled ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80 shadow-2xs' : 'bg-white/80 hover:bg-white text-slate-600 border-black/[0.05]'"
+              title="开启后仅展示当前地图可视矩形范围内的线下活动"
+            >
+              <span class="w-1.5 h-1.5 rounded-full" :class="boundsFilterEnabled ? 'bg-[#34C759]' : 'bg-slate-300'"></span>
+              <span>视野联动</span>
+            </button>
+          </div>
+
+          <!-- Row 3: 南京核心片区瞬移胶囊栏 -->
           <div class="px-4 py-1.5 border-b border-black/[0.03] bg-black/[0.015] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <span class="text-[10px] text-slate-400 font-medium shrink-0 flex items-center gap-0.5">
-              <span>瞬移:</span>
+            <span class="text-[10px] text-slate-400 font-medium shrink-0 flex items-center gap-1">
+              <svg class="w-2.5 h-2.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+              </svg>
+              <span>瞬移</span>
             </span>
             <button
               v-for="zone in zoneTeleports"
@@ -495,12 +497,12 @@ HTML_CONTENT = """<!DOCTYPE html>
             </button>
           </div>
 
-          <!-- Row 3: 【未来14天横向滑动日历条】 -->
+          <!-- Row 4: 【未来14天横向滑动日历条】 -->
           <div class="px-4 py-2 border-b border-black/[0.04] bg-[#F5F5F7]/80 backdrop-blur-sm flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <button
               @click="selectedCalendarDate = null"
               :class="[
-                'min-w-[42px] h-[52px] rounded-xl flex flex-col items-center justify-center px-1 cursor-pointer transition-all duration-200 shrink-0 text-center',
+                'min-w-[44px] h-[52px] rounded-xl flex flex-col items-center justify-center px-1 cursor-pointer transition-all duration-200 shrink-0 text-center',
                 selectedCalendarDate === null
                   ? 'bg-slate-950 text-white shadow-xs font-semibold'
                   : 'bg-white/80 hover:bg-white text-slate-600 border border-black/[0.04]'
@@ -541,7 +543,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           </div>
         </div>
 
-                <!-- 独立卡片滚动容器 (支持 卡片网格 与 ⏱️ 时间轴 双视图切换) -->
+        <!-- 独立卡片滚动容器 (支持 卡片网格 与 ⏱️ 时间轴 双视图切换) -->
         <div class="flex-1 min-h-0 overflow-y-auto p-4 no-scrollbar" id="cards-container">
           <!-- 视图 A: Bento 卡片流 -->
           <div v-if="currentViewMode === 'cards'" class="space-y-4">
@@ -667,20 +669,12 @@ HTML_CONTENT = """<!DOCTYPE html>
               </div>
             </div>
 
-          </div>
-
-                      </div>
-          </div>
-
-          <!-- 视图 B: 【⏱️ 时间轴视图 (Timeline View)】 -->
-          <div v-else class="relative space-y-6">
-            <!-- 贯穿全高纵向发光引导线 -->
-            <div class="absolute left-3.5 top-3 bottom-3 w-0.5 bg-slate-200/80 rounded-full pointer-events-none"></div>
-
+          </div>\r\n        </div>\r\n\r\n        <!-- 视图 B: 【⏱️ 时间轴视图 (Timeline View)】 -->
+          <div v-else class="space-y-6">
             <!-- 4 大吸顶分组 -->
             <div v-for="group in timelineGroups" :key="group.id" class="relative">
               <!-- Sticky 吸顶组头 -->
-              <div class="sticky top-0 z-10 py-1.5 px-3 rounded-xl bg-[#F5F5F7]/95 backdrop-blur-md border border-black/[0.04] shadow-2xs mb-3 flex items-center justify-between">
+              <div class="sticky top-0 z-20 py-1.5 px-3 rounded-xl bg-[#F5F5F7]/95 backdrop-blur-md border border-black/[0.04] shadow-2xs mb-3 flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <span class="w-2 h-2 rounded-full" :class="group.dotColor"></span>
                   <span class="text-xs font-bold text-slate-800 tracking-tight">{{ group.title }}</span>
@@ -691,8 +685,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </span>
               </div>
 
-              <!-- 分组下卡片条目 (带时间轴发光节点) -->
-              <div class="space-y-3 pl-7">
+              <!-- 分组下卡片条目 (带像素级贯通纵向导轨) -->
+              <div class="relative pl-7 space-y-3">
+                <!-- 本组连续纵向发光引导线 (位于 left-2.5，即 10px 处，居中对齐节点) -->
+                <div class="absolute left-[10px] top-3 bottom-3 w-[2px] bg-slate-300 rounded-full pointer-events-none"></div>
+
                 <div
                   v-for="item in group.items"
                   :key="item.id"
@@ -705,8 +702,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                       : 'border-black/[0.04] shadow-[0_3px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5'
                   ]"
                 >
-                  <!-- 时间轴发光小节点 -->
-                  <div class="absolute -left-[1.8rem] top-4 w-2.5 h-2.5 rounded-full border-2 border-white shadow-2xs ring-2 ring-black/[0.03]" :class="group.nodeColor"></div>
+                  <!-- 时间轴发光小节点 (居中穿在引导线上: left 10px - 28px = -18px, 宽度 12px -> left: -23px, 5px~17px 完美居中 11px) -->
+                  <div
+                    class="absolute -left-[23px] top-4 w-3 h-3 rounded-full border-2 border-white shadow-xs z-10 ring-2 ring-black/[0.04]"
+                    :class="group.nodeColor"
+                  ></div>
 
                   <div class="flex gap-3">
                     <!-- 缩略图 -->
@@ -1323,7 +1323,20 @@ HTML_CONTENT = """<!DOCTYPE html>
           // 1. 去除括号、书名号、引号
           clean = clean.replace(/【.*?】|\[.*?\]|（.*?）|\(.*?\)|《.*?》|“.*?”|”|‘|’/g, ' ').trim();
 
-          // 2. 识别前缀并跳过情绪营销词 (治愈暴击|、重磅官宣！、人机battle！等)
+          // 2. 经典地标/场馆优先匹配 (避免将场馆截断)
+          const LANDMARKS = [
+            '德基广场', '江苏省美术馆', '红山动物园', '老门东', '夫子庙', 
+            '熙南里', '金陵STYLE', '牛首山', '华采天地', '江苏大剧院', 
+            '南京眼', '玄武湖', '鸡鸣寺', '珍珠泉', '水墨大埝', '老山森林', 
+            '金鹰世界', '龙江新城市', '南京博览中心', '南京市博', '江宁织造'
+          ];
+          for (const lm of LANDMARKS) {
+            if (clean.includes(lm)) {
+              return lm;
+            }
+          }
+
+          // 3. 识别前缀并跳过情绪营销词 (治愈暴击|、重磅官宣！、人机battle！等)
           const sepMatch = clean.match(/^([^\s|｜:：!！·]{2,10})[|｜:：!！·]\s*(.+)$/);
           if (sepMatch) {
             const p = sepMatch[1].trim();
@@ -1339,11 +1352,11 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
           }
 
-          // 3. 去除无实质意义的通用营销修饰与前缀
+          // 4. 去除无实质意义的通用营销修饰与前缀
           clean = clean.replace(/^(?:2026年?|2025年?|南京市?|华东|首届|第[一二三四五六七八九十0-9]+届|中国(?:\(南京\))?)/g, '').trim();
           clean = clean.replace(/APP/gi, '').trim();
 
-          // 4. 精准核心词汇识别
+          // 5. 精准核心词汇识别
           if (clean.includes('星星人')) return '星星人展';
           if (clean.includes('苏韵华章')) return '苏韵华章展';
           if (clean.includes('水墨画')) return '水墨双年展';
@@ -1352,40 +1365,36 @@ HTML_CONTENT = """<!DOCTYPE html>
           if (clean.includes('珠宝')) return '国际珠宝展';
           if (clean.includes('菊花')) return '湖熟菊花节';
           if (clean.includes('红叶')) return '栖霞红叶节';
-          if (clean.includes('金陵STYLE') || clean.includes('慢生活露营')) return '金陵STYLE市集';
-          if (clean.includes('老门东')) return '老门东夜市';
-          if (clean.includes('夫子庙')) return '夫子庙汉服夜';
-          if (clean.includes('大报恩寺') || clean.includes('光影琉璃')) return '大报恩寺光影';
           if (clean.includes('建行') || clean.includes('建设银行')) return '建行商圈立减';
           if (clean.includes('工行') || clean.includes('工商银行')) return '工行乘车立减';
           if (clean.includes('农行') || clean.includes('农业银行')) return '农行数币红包';
           if (clean.includes('我的南京') || clean.includes('宁体汇')) return '我的南京体育券';
           if (clean.includes('云闪付')) return '云闪付消费券';
           if (clean.includes('支付宝') || clean.includes('骑行')) return '支付宝骑行周卡';
-          if (clean.includes('动物园') || clean.includes('红山')) return '红山动物园游园';
-          if (clean.includes('德基')) return '德基当代艺术';
           if (clean.includes('阅江楼')) return '阅江楼登高节';
-          if (clean.includes('颐和路')) return '颐和路民国漫步';
-          if (clean.includes('牛首山')) return '牛首山禅意季';
+          if (clean.includes('颐和路')) return '颐和路漫步';
           if (clean.includes('天生桥') || clean.includes('打铁花')) return '天生桥打铁花';
           if (clean.includes('螃蟹') || clean.includes('固城湖')) return '固城湖螃蟹节';
           if (clean.includes('慢城')) return '高淳慢城自驾';
-          if (clean.includes('浦口火车站')) return '浦口复古市集';
+          if (clean.includes('浦口火车站') || clean.includes('百年复古')) return '浦口复古市集';
+          if (clean.includes('数字艺术') || clean.includes('沉浸式')) return '数字艺术展';
+          if (clean.includes('雨花茶') || clean.includes('非遗')) return '雨花茶非遗展';
+          if (clean.includes('旧书') || clean.includes('盲盒')) return '旧书盲盒市集';
+          if (clean.includes('排期表') || clean.includes('展会排期')) return '10月展讯排期';
 
-          // 5. 截取首部，避免硬截断英文字母
+          // 6. 截取首部，避免截断英语单词或汉字词组
           clean = clean.split(/[|｜:：!！·]/)[0].trim();
-          if (clean.length > 6) {
-            let sub = clean.slice(0, 6);
-            if (clean[5] && clean[5].match(/[a-zA-Z]/) && clean[6] && clean[6].match(/[a-zA-Z]/)) {
+          if (clean.length > 8) {
+            let sub = clean.slice(0, 8);
+            if (clean[7] && clean[7].match(/[a-zA-Z]/) && clean[8] && clean[8].match(/[a-zA-Z]/)) {
               const alphaMatch = sub.match(/[a-zA-Z]+$/);
               if (alphaMatch && alphaMatch.index >= 2) {
                 sub = sub.slice(0, alphaMatch.index);
               }
             }
-            clean = sub.trim();
+            clean = sub;
           }
-
-          return clean || '精选活动';
+          return clean.trim() || '同城活动';
         }
 
         function getMarkerPriceLabel(item) {
@@ -1819,7 +1828,7 @@ HTML_CONTENT = """<!DOCTYPE html>
               <div class="apple-marker ${isActive ? 'active' : ''}" id="leaf-marker-${item.id}">
                 <div class="marker-pill inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] border border-black/[0.06] font-medium text-xs whitespace-nowrap cursor-pointer ${isActive ? 'bg-[#007AFF] text-white ring-2 ring-white/90 scale-110 z-50' : 'bg-white/95 text-slate-800'}">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${isActive ? '#ffffff' : dotColor}"></span>
-                  <span class="marker-name font-semibold ${isActive ? 'text-white' : 'text-slate-900'}">${shortName}</span>
+                  <span class="marker-name font-semibold truncate max-w-[130px] ${isActive ? 'text-white' : 'text-slate-900'}">${shortName}</span>
                   <span class="marker-divider ${isActive ? 'text-white/40' : 'text-slate-300'}">|</span>
                   <span class="marker-price text-[11px] font-semibold ${isActive ? 'text-white' : '#34C759'}">${priceLabel}</span>
                 </div>
