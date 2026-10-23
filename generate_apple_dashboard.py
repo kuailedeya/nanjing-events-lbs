@@ -390,51 +390,93 @@ HTML_CONTENT = """<!DOCTYPE html>
     >
       <div class="relative w-full h-full bg-[#F5F5F7]/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[28px] border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
         
-        <!-- 固定头部：标题栏 + 视野联动开关 + 瞬移栏 (flex-shrink-0 绝对防穿模) -->
+                <!-- 固定头部：标题栏 + 视图切换 + 3维排序 + 瞬移栏 + 横向14天日历条 (flex-shrink-0) -->
         <div class="flex-shrink-0 z-10 bg-[#F5F5F7]/95 backdrop-blur-md">
-          <div class="px-5 pt-4 pb-2.5 flex items-center justify-between border-b border-black/[0.04]">
-            <div class="flex items-center gap-2">
-              <h2 class="text-sm font-semibold text-slate-900 tracking-tight">南京精选探索</h2>
+          <!-- Row 1: 标题 + [卡片/时间轴] 视图切换 + [距离/截止/最新] 排序 + 抽屉折叠 -->
+          <div class="px-4 pt-3.5 pb-2.5 flex items-center justify-between border-b border-black/[0.04] gap-2">
+            <div class="flex items-center gap-1.5 shrink-0">
+              <h2 class="text-sm font-semibold text-slate-900 tracking-tight">南京精选</h2>
               <span class="text-xs font-semibold text-slate-400 tabular-nums">({{ filteredEvents.length }})</span>
               
-              <!-- 苹果风“视野联动”微开关 -->
-              <button
-                @click="toggleBoundsFilter"
-                class="ml-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium transition-all cursor-pointer"
-                :class="boundsFilterEnabled ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/60 shadow-2xs' : 'bg-black/[0.04] text-slate-500 hover:text-slate-700'"
-                title="开启后仅展示当前地图可视矩形范围内的线下活动"
-              >
-                <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="boundsFilterEnabled ? 'bg-[#34C759]' : 'bg-slate-300'"></span>
-                <span>视野联动</span>
-              </button>
-
-              <!-- 苹果风“逆序/正序”微开关 -->
-              <button
-                @click="isReverseOrder = !isReverseOrder"
-                class="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-all cursor-pointer"
-                :class="isReverseOrder ? 'bg-sky-50 text-sky-800 border border-sky-200/60 shadow-2xs' : 'bg-black/[0.04] text-slate-500 hover:text-slate-700'"
-                title="切换正序/逆序排列"
-              >
-                <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="isReverseOrder ? 'bg-[#007AFF]' : 'bg-slate-300'"></span>
-                <span>{{ isReverseOrder ? '逆序' : '正序' }}</span>
-              </button>
+              <!-- 视图切换：卡片 vs 时间轴 -->
+              <div class="ml-1 inline-flex rounded-lg bg-black/[0.05] p-0.5 border border-black/[0.04]">
+                <button
+                  @click="currentViewMode = 'cards'"
+                  class="px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
+                  :class="currentViewMode === 'cards' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
+                  title="卡片网格视图"
+                >
+                  卡片
+                </button>
+                <button
+                  @click="currentViewMode = 'timeline'"
+                  class="px-2 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
+                  :class="currentViewMode === 'timeline' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
+                  title="紧迫度时间轴视图"
+                >
+                  时间轴
+                </button>
+              </div>
 
               <span v-if="showFavoritesOnly" class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-semibold">待去清单</span>
             </div>
 
-            <button
-              @click="drawerOpen = !drawerOpen"
-              class="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center transition shadow-sm cursor-pointer"
-              :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
-            >
-              <svg :class="['w-4 h-4 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            </button>
+            <!-- 右侧操作区：多维排序胶囊 + 视野联动 + 折叠抽屉 -->
+            <div class="flex items-center gap-1 shrink-0">
+              <!-- 3维排序切换胶囊 [距离最近 | 即将截止 | 最新收录] -->
+              <div class="inline-flex rounded-full bg-black/[0.04] p-0.5 border border-black/[0.04] text-[10.5px]">
+                <button
+                  @click="sortMode = 'distance'"
+                  class="px-2 py-0.5 rounded-full transition-all cursor-pointer"
+                  :class="sortMode === 'distance' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
+                  title="按距离市中心由近到远排序（优先市区核心活动）"
+                >
+                  距离最近
+                </button>
+                <button
+                  @click="sortMode = 'expiring'"
+                  class="px-2 py-0.5 rounded-full transition-all cursor-pointer"
+                  :class="sortMode === 'expiring' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
+                  title="按剩余天数排序"
+                >
+                  即将截止
+                </button>
+                <button
+                  @click="sortMode = 'latest'"
+                  class="px-2 py-0.5 rounded-full transition-all cursor-pointer"
+                  :class="sortMode === 'latest' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
+                  title="按发布时间排序"
+                >
+                  最新
+                </button>
+              </div>
+
+              <!-- 视野联动微开关 -->
+              <button
+                @click="toggleBoundsFilter"
+                class="inline-flex items-center gap-1 px-1.5 py-1 rounded-full text-[10.5px] font-medium transition-all cursor-pointer"
+                :class="boundsFilterEnabled ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/60 shadow-2xs' : 'bg-black/[0.04] text-slate-500 hover:text-slate-700'"
+                title="开启后仅展示当前地图可视矩形范围内的线下活动"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="boundsFilterEnabled ? 'bg-[#34C759]' : 'bg-slate-300'"></span>
+                <span>视野</span>
+              </button>
+
+              <!-- 折叠抽屉 -->
+              <button
+                @click="drawerOpen = !drawerOpen"
+                class="w-6 h-6 rounded-lg bg-white/70 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center transition shadow-2xs cursor-pointer ml-0.5"
+                :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
+              >
+                <svg :class="['w-3.5 h-3.5 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
-          <!-- 南京核心片区瞬移胶囊栏 -->
-          <div class="px-4 py-2 border-b border-black/[0.03] bg-black/[0.015] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <!-- Row 2: 南京核心片区瞬移胶囊栏 -->
+          <div class="px-4 py-1.5 border-b border-black/[0.03] bg-black/[0.015] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             <span class="text-[10px] text-slate-400 font-medium shrink-0 flex items-center gap-0.5">
               <span>瞬移:</span>
             </span>
@@ -443,7 +485,7 @@ HTML_CONTENT = """<!DOCTYPE html>
               :key="zone.label"
               @click="teleportToZone(zone)"
               :class="[
-                'px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-all cursor-pointer shrink-0',
+                'px-2 py-0.5 rounded-full text-[10.5px] font-medium whitespace-nowrap transition-all cursor-pointer shrink-0',
                 activeZoneLabel === zone.label
                   ? 'bg-slate-950 text-white font-semibold shadow-xs'
                   : 'bg-white/80 hover:bg-white text-slate-600 border border-black/[0.04]'
@@ -452,22 +494,69 @@ HTML_CONTENT = """<!DOCTYPE html>
               {{ zone.label }}
             </button>
           </div>
+
+          <!-- Row 3: 【未来14天横向滑动日历条】 -->
+          <div class="px-4 py-2 border-b border-black/[0.04] bg-[#F5F5F7]/80 backdrop-blur-sm flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <button
+              @click="selectedCalendarDate = null"
+              :class="[
+                'min-w-[42px] h-[52px] rounded-xl flex flex-col items-center justify-center px-1 cursor-pointer transition-all duration-200 shrink-0 text-center',
+                selectedCalendarDate === null
+                  ? 'bg-slate-950 text-white shadow-xs font-semibold'
+                  : 'bg-white/80 hover:bg-white text-slate-600 border border-black/[0.04]'
+              ]"
+              title="查看全部日期活动"
+            >
+              <span class="text-[9.5px] opacity-75 leading-none">全周期</span>
+              <span class="text-xs font-bold leading-tight mt-1">全部</span>
+            </button>
+
+            <button
+              v-for="day in calendarDays"
+              :key="day.iso"
+              @click="selectCalendarDay(day.iso)"
+              :class="[
+                'min-w-[44px] h-[52px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1 cursor-pointer transition-all duration-200 shrink-0 text-center',
+                selectedCalendarDate === day.iso
+                  ? 'bg-[#007AFF] text-white shadow-md scale-102 font-semibold'
+                  : (day.count > 0 ? 'bg-white/90 hover:bg-white text-slate-800 border border-black/[0.04]' : 'bg-black/[0.02] text-slate-400 border border-transparent')
+              ]"
+              :title="day.iso + ' (' + day.count + ' 个活动开放)'"
+            >
+              <span class="text-[9.5px] leading-none" :class="selectedCalendarDate === day.iso ? 'text-white/85' : 'text-slate-400'">
+                {{ day.label }}
+              </span>
+              <span class="text-[13px] font-bold tabular-nums leading-none">
+                {{ day.dateNum }}
+              </span>
+              <div class="flex items-center gap-0.5 h-1">
+                <span
+                  v-for="i in day.dots"
+                  :key="i"
+                  class="w-1 h-1 rounded-full"
+                  :class="selectedCalendarDate === day.iso ? 'bg-white' : (i === 1 ? 'bg-[#007AFF]' : (i === 2 ? 'bg-[#34C759]' : 'bg-[#FF9500]'))"
+                ></span>
+              </div>
+            </button>
+          </div>
         </div>
 
-        <!-- 独立卡片滚动容器 (flex-1 min-h-0 overflow-y-auto 彻底消除顶部残缺与穿模) -->
-        <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 no-scrollbar" id="cards-container">
-          <div
-            v-for="item in filteredEvents"
-            :key="item.id"
-            :id="'card-' + item.id"
-            @click="openDetail(item)"
-            :class="[
-              'group bg-white rounded-2xl p-3.5 transition-all duration-300 cursor-pointer border flex flex-col',
-              activeEventId === item.id
-                ? 'ring-2 ring-[#007AFF] border-transparent shadow-[0_16px_36px_rgba(0,122,255,0.16)] -translate-y-1'
-                : 'border-black/[0.04] shadow-[0_4px_16px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1'
-            ]"
-          >
+                <!-- 独立卡片滚动容器 (支持 卡片网格 与 ⏱️ 时间轴 双视图切换) -->
+        <div class="flex-1 min-h-0 overflow-y-auto p-4 no-scrollbar" id="cards-container">
+          <!-- 视图 A: Bento 卡片流 -->
+          <div v-if="currentViewMode === 'cards'" class="space-y-4">
+            <div
+              v-for="item in filteredEvents"
+              :key="item.id"
+              :id="'card-' + item.id"
+              @click="openDetail(item)"
+              :class="[
+                'group bg-white rounded-2xl p-3.5 transition-all duration-300 cursor-pointer border flex flex-col',
+                activeEventId === item.id
+                  ? 'ring-2 ring-[#007AFF] border-transparent shadow-[0_16px_36px_rgba(0,122,255,0.16)] -translate-y-1'
+                  : 'border-black/[0.04] shadow-[0_4px_16px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1'
+              ]"
+            >
             <!-- Bento 封面图 -->
             <div class="relative w-full h-36 rounded-xl overflow-hidden mb-3 bg-slate-100 group-hover:scale-[1.01] transition-transform duration-300 shrink-0">
               <img
@@ -578,6 +667,84 @@ HTML_CONTENT = """<!DOCTYPE html>
               </div>
             </div>
 
+          </div>
+
+                      </div>
+          </div>
+
+          <!-- 视图 B: 【⏱️ 时间轴视图 (Timeline View)】 -->
+          <div v-else class="relative space-y-6">
+            <!-- 贯穿全高纵向发光引导线 -->
+            <div class="absolute left-3.5 top-3 bottom-3 w-0.5 bg-slate-200/80 rounded-full pointer-events-none"></div>
+
+            <!-- 4 大吸顶分组 -->
+            <div v-for="group in timelineGroups" :key="group.id" class="relative">
+              <!-- Sticky 吸顶组头 -->
+              <div class="sticky top-0 z-10 py-1.5 px-3 rounded-xl bg-[#F5F5F7]/95 backdrop-blur-md border border-black/[0.04] shadow-2xs mb-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full" :class="group.dotColor"></span>
+                  <span class="text-xs font-bold text-slate-800 tracking-tight">{{ group.title }}</span>
+                  <span class="text-[10px] text-slate-400 font-normal">· {{ group.desc }}</span>
+                </div>
+                <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full tabular-nums" :class="group.badgeClass">
+                  {{ group.items.length }} 场
+                </span>
+              </div>
+
+              <!-- 分组下卡片条目 (带时间轴发光节点) -->
+              <div class="space-y-3 pl-7">
+                <div
+                  v-for="item in group.items"
+                  :key="item.id"
+                  :id="'timeline-card-' + item.id"
+                  @click="openDetail(item)"
+                  :class="[
+                    'group relative bg-white rounded-2xl p-3 transition-all duration-300 cursor-pointer border flex flex-col',
+                    activeEventId === item.id
+                      ? 'ring-2 ring-[#007AFF] border-transparent shadow-[0_16px_36px_rgba(0,122,255,0.16)] -translate-y-0.5'
+                      : 'border-black/[0.04] shadow-[0_3px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_10px_24px_rgba(0,0,0,0.06)] hover:-translate-y-0.5'
+                  ]"
+                >
+                  <!-- 时间轴发光小节点 -->
+                  <div class="absolute -left-[1.8rem] top-4 w-2.5 h-2.5 rounded-full border-2 border-white shadow-2xs ring-2 ring-black/[0.03]" :class="group.nodeColor"></div>
+
+                  <div class="flex gap-3">
+                    <!-- 缩略图 -->
+                    <div class="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                      <img :src="getEventCover(item)" :alt="item.title" loading="lazy" class="w-full h-full object-cover rounded-xl" />
+                      <span class="absolute bottom-1 left-1 px-1.5 py-0.2 rounded text-[9px] font-semibold backdrop-blur-md bg-black/60 text-white tabular-nums">
+                        {{ item.distance_km }}km
+                      </span>
+                    </div>
+
+                    <!-- 信息体 -->
+                    <div class="flex-1 min-w-0 flex flex-col justify-between">
+                      <div>
+                        <div class="flex items-center gap-1.5 mb-1">
+                          <span :class="['px-1.5 py-0.2 rounded text-[9.5px] font-semibold border', getStatusInfo(item).bg]">
+                            {{ getStatusInfo(item).label }}
+                          </span>
+                          <span class="text-[10px] text-slate-400 truncate">{{ item.event_time_text }}</span>
+                        </div>
+                        <h4 class="text-xs font-semibold text-slate-900 group-hover:text-[#007AFF] transition-colors line-clamp-2 leading-snug">
+                          {{ item.title }}
+                        </h4>
+                      </div>
+
+                      <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-black/[0.03] mt-2" @click.stop>
+                        <span class="font-medium truncate max-w-[130px] text-slate-600">{{ item.address }}</span>
+                        <div class="flex items-center gap-2">
+                          <span class="text-[#34C759] font-medium" v-if="item.is_free">免票</span>
+                          <span class="text-slate-600 font-medium" v-else>{{ item.benefit }}</span>
+                          <button @click.stop="focusEvent(item)" class="text-[#007AFF] font-medium hover:underline text-[10.5px]">定位</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- 空状态 -->
@@ -867,6 +1034,66 @@ HTML_CONTENT = """<!DOCTYPE html>
       { label: '江宁百家湖', coords: [118.8258, 31.9328], zoom: 13 },
     ];
 
+    const THEME_IMAGE_POOLS = {
+      art: [
+        'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1561214115-f2f134cc4912?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=600&auto=format&fit=crop&q=80'
+      ],
+      heritage: [
+        'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1548013146-72479768bada?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1599707367072-cd6ada2bc375?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80'
+      ],
+      music: [
+        'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80'
+      ],
+      market_outdoor: [
+        'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1510312305653-8ed496efae75?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600&auto=format&fit=crop&q=80'
+      ],
+      food: [
+        'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1544025162-d76694265947?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1490750967868-88aa4486c946?w=600&auto=format&fit=crop&q=80'
+      ],
+      tech_pop: [
+        'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1531243269054-5ebf6f34081e?w=600&auto=format&fit=crop&q=80'
+      ],
+      finance_perks: [
+        'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1556742049-0a67c5574f73?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600&auto=format&fit=crop&q=80'
+      ],
+      nature_park: [
+        'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1508873696983-2df5703bc20d?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1534188753412-3e26d0d618d6?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1473448912268-2022ce9509d8?w=600&auto=format&fit=crop&q=80'
+      ]
+    };
+
+    function hashStr(s) {
+      if (!s) return 0;
+      let h = 0;
+      for (let i = 0; i < s.length; i++) {
+        h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+      }
+      return Math.abs(h);
+    }
+
     const COVER_MAP = {
       'wx_fd0cb00e9b69': 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80',
       'wx_d164747d9f7e': 'https://images.unsplash.com/photo-1563089145-599997674d42?w=600&auto=format&fit=crop&q=80',
@@ -909,7 +1136,48 @@ HTML_CONTENT = """<!DOCTYPE html>
         const showStatsModal = ref(false);
         const mapStyleMode = ref('standard');
         const activeZoneLabel = ref('全城');
-        const isReverseOrder = ref(true);
+        const currentViewMode = ref('cards'); // 'cards' | 'timeline'
+        const sortMode = ref('distance');    // 'distance' (默认主城优先) | 'expiring' | 'latest'
+        const selectedCalendarDate = ref(null); // 'YYYY-MM-DD' 单日筛选
+
+        // 未来 14 天横向滑动日历条
+        const calendarDays = computed(() => {
+          const days = [];
+          const base = new Date('2026-10-23T00:00:00');
+          const weekMap = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+          for (let i = 0; i < 14; i++) {
+            const d = new Date(base.getTime() + i * 86400000);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const dayNum = String(d.getDate()).padStart(2, '0');
+            const iso = `${y}-${m}-${dayNum}`;
+            const label = i === 0 ? '今天' : (i === 1 ? '明天' : weekMap[d.getDay()]);
+
+            const count = events.value.filter(it => {
+              if (!it.start_date || !it.end_date) return true;
+              return it.start_date <= iso && iso <= it.end_date;
+            }).length;
+
+            const dots = count === 0 ? 0 : (count > 15 ? 3 : (count > 5 ? 2 : 1));
+
+            days.push({
+              iso,
+              label,
+              dateNum: d.getDate(),
+              count,
+              dots
+            });
+          }
+          return days;
+        });
+
+        function selectCalendarDay(iso) {
+          if (selectedCalendarDate.value === iso) {
+            selectedCalendarDate.value = null;
+          } else {
+            selectedCalendarDate.value = iso;
+          }
+        }
 
         const favoriteIds = ref(JSON.parse(localStorage.getItem('nanjing_favorites') || '[]'));
 
@@ -995,12 +1263,36 @@ HTML_CONTENT = """<!DOCTYPE html>
           };
         }
 
-        function getEventCover(item) {
+                function getEventCover(item) {
           if (!item) return '';
           if (COVER_MAP[item.id]) return COVER_MAP[item.id];
-          if (item.category === '南京展会') return 'https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=600&auto=format&fit=crop&q=80';
-          if (item.category === '羊毛福利') return 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=600&auto=format&fit=crop&q=80';
-          return 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&auto=format&fit=crop&q=80';
+          const hay = (item.title + ' ' + (item.summary || '') + ' ' + (item.category || '')).toLowerCase();
+          const hash = hashStr(item.id || item.title || 'event');
+
+          let pool = THEME_IMAGE_POOLS.nature_park;
+          if (/螃蟹|美食|小吃|糕团|采摘|吃|鲜蟹|果蔬/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.food;
+          } else if (/老街|古镇|汉服|非遗|戏曲|民国|寺庙|大板巷|夫子庙|大报恩寺|熙南里/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.heritage;
+          } else if (/艺术|画展|美术馆|雕塑|特展|双年展|展览|书画|工艺|文物|博物院/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.art;
+          } else if (/音乐|草坪|乐队|演出|交响|民谣|黑胶|打铁花|演唱会/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.music;
+          } else if (/市集|咖啡|露营|天台|户外|野餐|徒步|登山|自驾|慢生活/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.market_outdoor;
+          } else if (/潮玩|星星人|漫展|acg|科技|极客|车展|数码|vr|黑科技/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.tech_pop;
+          } else if (/银行|立减金|消费券|数币|红包|1分钱|乘车码|补贴|免费券|省钱|体育券/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.finance_perks;
+          } else if (/动物园|红山|菊花|红叶|秋季|森林|水杉|湿地|公园|湖熟/.test(hay)) {
+            pool = THEME_IMAGE_POOLS.nature_park;
+          } else if (item.category === '南京展会') {
+            pool = THEME_IMAGE_POOLS.art;
+          } else if (item.category === '羊毛福利') {
+            pool = THEME_IMAGE_POOLS.finance_perks;
+          }
+
+          return pool[hash % pool.length];
         }
 
         const categoryOptions = [
@@ -1024,11 +1316,76 @@ HTML_CONTENT = """<!DOCTYPE html>
           showFavoritesOnly.value = false;
         }
 
-        function getMarkerShortName(title) {
+                function getMarkerShortName(title) {
           if (!title) return '精选活动';
-          let clean = title.replace(/【.*?】|\\[.*?\\]|（.*?）|\\(.*?\\)|南京/g, '').trim();
-          if (clean.length > 6) return clean.slice(0, 6);
-          return clean || '活动';
+          let clean = title.trim();
+
+          // 1. 去除括号、书名号、引号
+          clean = clean.replace(/【.*?】|\[.*?\]|（.*?）|\(.*?\)|《.*?》|“.*?”|”|‘|’/g, ' ').trim();
+
+          // 2. 识别前缀并跳过情绪营销词 (治愈暴击|、重磅官宣！、人机battle！等)
+          const sepMatch = clean.match(/^([^\s|｜:：!！·]{2,10})[|｜:：!！·]\s*(.+)$/);
+          if (sepMatch) {
+            const p = sepMatch[1].trim();
+            const rem = sepMatch[2].trim();
+            if (/暴击|必看|重磅|速领|快抢|周末|震撼|免票|官宣|合集|推荐|打卡|绝美|全部|福利/.test(p) && rem.length >= 2) {
+              clean = rem;
+            } else if (/battle/i.test(p)) {
+              clean = rem.length >= 2 ? rem : p.replace(/battle/i, '');
+            } else if (rem.length >= 3 && rem.length <= 12) {
+              clean = rem;
+            } else {
+              clean = p;
+            }
+          }
+
+          // 3. 去除无实质意义的通用营销修饰与前缀
+          clean = clean.replace(/^(?:2026年?|2025年?|南京市?|华东|首届|第[一二三四五六七八九十0-9]+届|中国(?:\(南京\))?)/g, '').trim();
+          clean = clean.replace(/APP/gi, '').trim();
+
+          // 4. 精准核心词汇识别
+          if (clean.includes('星星人')) return '星星人展';
+          if (clean.includes('苏韵华章')) return '苏韵华章展';
+          if (clean.includes('水墨画')) return '水墨双年展';
+          if (clean.includes('新能源汽车') || clean.includes('车展')) return '新能源车展';
+          if (clean.includes('ACG') || clean.includes('动漫')) return 'ACG动漫节';
+          if (clean.includes('珠宝')) return '国际珠宝展';
+          if (clean.includes('菊花')) return '湖熟菊花节';
+          if (clean.includes('红叶')) return '栖霞红叶节';
+          if (clean.includes('金陵STYLE') || clean.includes('慢生活露营')) return '金陵STYLE市集';
+          if (clean.includes('老门东')) return '老门东夜市';
+          if (clean.includes('夫子庙')) return '夫子庙汉服夜';
+          if (clean.includes('大报恩寺') || clean.includes('光影琉璃')) return '大报恩寺光影';
+          if (clean.includes('建行') || clean.includes('建设银行')) return '建行商圈立减';
+          if (clean.includes('工行') || clean.includes('工商银行')) return '工行乘车立减';
+          if (clean.includes('农行') || clean.includes('农业银行')) return '农行数币红包';
+          if (clean.includes('我的南京') || clean.includes('宁体汇')) return '我的南京体育券';
+          if (clean.includes('云闪付')) return '云闪付消费券';
+          if (clean.includes('支付宝') || clean.includes('骑行')) return '支付宝骑行周卡';
+          if (clean.includes('动物园') || clean.includes('红山')) return '红山动物园游园';
+          if (clean.includes('德基')) return '德基当代艺术';
+          if (clean.includes('阅江楼')) return '阅江楼登高节';
+          if (clean.includes('颐和路')) return '颐和路民国漫步';
+          if (clean.includes('牛首山')) return '牛首山禅意季';
+          if (clean.includes('天生桥') || clean.includes('打铁花')) return '天生桥打铁花';
+          if (clean.includes('螃蟹') || clean.includes('固城湖')) return '固城湖螃蟹节';
+          if (clean.includes('慢城')) return '高淳慢城自驾';
+          if (clean.includes('浦口火车站')) return '浦口复古市集';
+
+          // 5. 截取首部，避免硬截断英文字母
+          clean = clean.split(/[|｜:：!！·]/)[0].trim();
+          if (clean.length > 6) {
+            let sub = clean.slice(0, 6);
+            if (clean[5] && clean[5].match(/[a-zA-Z]/) && clean[6] && clean[6].match(/[a-zA-Z]/)) {
+              const alphaMatch = sub.match(/[a-zA-Z]+$/);
+              if (alphaMatch && alphaMatch.index >= 2) {
+                sub = sub.slice(0, alphaMatch.index);
+              }
+            }
+            clean = sub.trim();
+          }
+
+          return clean || '精选活动';
         }
 
         function getMarkerPriceLabel(item) {
@@ -1134,6 +1491,13 @@ HTML_CONTENT = """<!DOCTYPE html>
               if (!status.label.includes('剩')) return false;
             }
 
+                      if (selectedCalendarDate.value) {
+              const targetIso = selectedCalendarDate.value;
+              if (it.start_date && it.end_date) {
+                if (!(it.start_date <= targetIso && targetIso <= it.end_date)) return false;
+              }
+            }
+
             if (searchQuery.value) {
               const q = searchQuery.value.toLowerCase();
               const hay = [it.title, it.category, it.district, it.address, it.benefit].join(' ').toLowerCase();
@@ -1154,16 +1518,120 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
           }
 
+          // 多维排序（默认距离最近优先，彻底解决 83km 高淳活动霸占榜首问题）
           let result = [];
           if (showFavoritesOnly.value) {
             result = uniqueList.sort((a, b) => getDaysRemainingScore(a) - getDaysRemainingScore(b));
+          } else if (sortMode.value === 'distance') {
+            result = uniqueList.sort((a, b) => a.distance_km - b.distance_km);
+          } else if (sortMode.value === 'expiring') {
+            result = uniqueList.sort((a, b) => getDaysRemainingScore(a) - getDaysRemainingScore(b));
+          } else if (sortMode.value === 'latest') {
+            result = uniqueList.sort((a, b) => new Date(b.publish_date || '2026-10-01') - new Date(a.publish_date || '2026-10-01'));
           } else {
             result = uniqueList.sort((a, b) => a.distance_km - b.distance_km);
           }
-          if (isReverseOrder.value) {
-            result.reverse();
-          }
           return result;
+        });
+
+        // ⏱️ 时间轴视图 4 大吸顶分组 (Sticky Timeline Groups)
+        const timelineGroups = computed(() => {
+          const list = filteredEvents.value;
+          const todayIso = '2026-10-23';
+
+          const focusItems = [];     // 1. 今日与本周末焦点
+          const expiringItems = [];  // 2. 即将截止 (7天内结束)
+          const upcomingItems = [];  // 3. 近期即将开始 (未开展预告)
+          const longtermItems = [];  // 4. 跨月长线活动 (展期 > 30天)
+
+          list.forEach(item => {
+            const sDate = item.start_date || '2026-10-01';
+            const eDate = item.end_date || '2026-10-31';
+            const daysLeft = item.days_left != null ? item.days_left : getDaysRemainingScore(item);
+            const timeText = item.event_time_text || '';
+
+            const startObj = new Date(sDate);
+            const endObj = new Date(eDate);
+            const durationDays = Math.round((endObj - startObj) / (86400000));
+
+            // 未开展预告
+            if (sDate > todayIso && !timeText.includes('进行中')) {
+              upcomingItems.push(item);
+              return;
+            }
+
+            // 今日/本周末焦点
+            const isTodayWeekend = (
+              timeText.includes('今日') || 
+              timeText.includes('10.23') ||
+              timeText.includes('周末') || 
+              timeText.includes('周六') || 
+              timeText.includes('周日') ||
+              daysLeft <= 2
+            );
+
+            if (isTodayWeekend) {
+              focusItems.push(item);
+              return;
+            }
+
+            // 即将截止 (7天内结束)
+            if (daysLeft > 0 && daysLeft <= 7) {
+              expiringItems.push(item);
+              return;
+            }
+
+            // 跨月长线常设活动 (展期 > 30天)
+            if (durationDays >= 30 || timeText.includes('常设') || timeText.includes('长期')) {
+              longtermItems.push(item);
+              return;
+            }
+
+            if (daysLeft <= 14) {
+              expiringItems.push(item);
+            } else {
+              longtermItems.push(item);
+            }
+          });
+
+          return [
+            {
+              id: 'focus',
+              title: '今日与本周末焦点',
+              desc: '当下最热·出行首选',
+              items: focusItems,
+              dotColor: 'bg-[#FF3B30]',
+              nodeColor: 'bg-[#FF3B30]',
+              badgeClass: 'bg-red-50 text-red-700 border border-red-200/50'
+            },
+            {
+              id: 'expiring',
+              title: '即将截止 · 抓紧去',
+              desc: '7天内结束·错过等明年',
+              items: expiringItems,
+              dotColor: 'bg-[#FF9500]',
+              nodeColor: 'bg-[#FF9500]',
+              badgeClass: 'bg-amber-50 text-amber-800 border border-amber-200/50'
+            },
+            {
+              id: 'upcoming',
+              title: '近期即将开始 · 前瞻',
+              desc: '抢先知晓·早鸟预约',
+              items: upcomingItems,
+              dotColor: 'bg-[#007AFF]',
+              nodeColor: 'bg-[#007AFF]',
+              badgeClass: 'bg-blue-50 text-blue-700 border border-blue-200/50'
+            },
+            {
+              id: 'longterm',
+              title: '跨月长线活动 · 常设展期',
+              desc: '展期超30天·闲暇随时去',
+              items: longtermItems,
+              dotColor: 'bg-[#34C759]',
+              nodeColor: 'bg-[#34C759]',
+              badgeClass: 'bg-emerald-50 text-emerald-800 border border-emerald-200/50'
+            }
+          ].filter(g => g.items.length > 0);
         });
 
         const timeStats = computed(() => {
@@ -1572,8 +2040,13 @@ HTML_CONTENT = """<!DOCTYPE html>
           toggleFavorite,
           copyAddress,
           copiedAddress,
-          toggleBoundsFilter,
-          isReverseOrder,
+                    toggleBoundsFilter,
+          currentViewMode,
+          sortMode,
+          selectedCalendarDate,
+          calendarDays,
+          selectCalendarDay,
+          timelineGroups,
           hasActiveFilter,
           searchQuery,
           activeEventId,
