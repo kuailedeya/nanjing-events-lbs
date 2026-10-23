@@ -65,25 +65,31 @@ HTML_CONTENT = """<!DOCTYPE html>
       transform: translate(-50%, -108%) scale(1.08);
       z-index: 50 !important;
     }
+    .apple-marker {
+      transform: translate(-50%, -100%);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .apple-marker:hover {
+      transform: translate(-50%, -105%) scale(1.05);
+      z-index: 500 !important;
+    }
     .apple-marker.active {
-      transform: translate(-50%, -114%) scale(1.15);
-      z-index: 60 !important;
+      transform: translate(-50%, -108%) scale(1.12);
+      z-index: 1000 !important;
     }
     .apple-marker.active .marker-pill {
-      background-color: #007AFF !important;
+      background-color: #020617 !important; /* bg-slate-950 */
       color: #ffffff !important;
-      box-shadow: 0 14px 32px rgba(0, 122, 255, 0.4), 0 4px 10px rgba(0, 122, 255, 0.2) !important;
-      border-color: #007AFF !important;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+      border-color: rgba(255, 255, 255, 0.2) !important;
     }
     .apple-marker.active .marker-name,
     .apple-marker.active .marker-price {
       color: #ffffff !important;
     }
-    .apple-marker.active .marker-divider {
-      color: rgba(255, 255, 255, 0.4) !important;
-    }
     .apple-marker.active .marker-dot {
       background-color: #ffffff !important;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.8) !important;
     }
   </style>
 </head>
@@ -302,6 +308,29 @@ HTML_CONTENT = """<!DOCTYPE html>
           重置
         </button>
       </div>
+    
+      <!-- 空间瞬移极简片区栏 (脱离抽屉，回归地图空间探索) -->
+      <div class="mt-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar pointer-events-auto">
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-medium text-slate-500 bg-white/80 backdrop-blur-md border border-white/80 shadow-2xs shrink-0 flex items-center gap-1">
+          <svg class="w-2.5 h-2.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+          <span>瞬移</span>
+        </span>
+        <button
+          v-for="zone in zoneTeleports"
+          :key="zone.label"
+          @click="teleportToZone(zone)"
+          :class="[
+            'px-2.5 py-0.5 rounded-full text-[10.5px] font-medium whitespace-nowrap transition-all cursor-pointer shrink-0 backdrop-blur-md border',
+            activeZoneLabel === zone.label
+              ? 'bg-slate-950 text-white font-semibold shadow-xs border-slate-950'
+              : 'bg-white/80 hover:bg-white text-slate-700 border-white/80 shadow-2xs'
+          ]"
+        >
+          {{ zone.label }}
+        </button>
+      </div>
     </header>
 
     <!-- 3. 左下角：高德地图深度功能控制岛 -->
@@ -390,57 +419,64 @@ HTML_CONTENT = """<!DOCTYPE html>
     >
       <div class="relative w-full h-full bg-[#F5F5F7]/85 backdrop-blur-2xl backdrop-saturate-150 rounded-[28px] border border-white/80 shadow-[0_20px_50px_rgba(0,0,0,0.1)] flex flex-col overflow-hidden">
         
-                <!-- 固定头部：标题栏 + 视图切换 + 3维排序 + 瞬移栏 + 横向14天日历条 (flex-shrink-0) -->
-        <div class="flex-shrink-0 z-10 bg-[#F5F5F7]/95 backdrop-blur-md">
-          <!-- Row 1: 标题 + [卡片/时间轴] 视图切换 + 待去标签 + 折叠抽屉 -->
-          <div class="px-4 pt-3.5 pb-2 flex items-center justify-between border-b border-black/[0.04]">
-            <div class="flex items-center gap-2">
-              <h2 class="text-sm font-semibold text-slate-900 tracking-tight">南京精选</h2>
-              <span class="text-xs font-semibold text-slate-400 tabular-nums">({{ filteredEvents.length }})</span>
-              
+                <!-- 固定头部：标题栏 + 视图切换 + 3维排序 + 横向14天日历条 (非溢出 Apple HIG 3 层轻薄布局) -->
+        <div class="flex-shrink-0 z-10 bg-[#F5F5F7]/95 backdrop-blur-md border-b border-black/[0.04]">
+          <!-- Tier 1: 标题 + [卡片/时间轴] 分段切换 + 折叠抽屉按钮 (从不溢出) -->
+          <div class="px-4 pt-3 pb-1.5 flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <h2 class="text-xs font-semibold text-slate-900 tracking-tight">南京精选</h2>
+              <span class="text-[11px] font-semibold text-slate-400 tabular-nums">({{ filteredEvents.length }})</span>
+              <span v-if="showFavoritesOnly" class="ml-1 text-[9.5px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-semibold">待去清单</span>
+            </div>
+
+            <div class="flex items-center gap-1.5">
               <!-- 视图切换：卡片 vs 时间轴 -->
               <div class="inline-flex rounded-lg bg-black/[0.05] p-0.5 border border-black/[0.04]">
                 <button
                   @click="currentViewMode = 'cards'"
-                  class="px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
-                  :class="currentViewMode === 'cards' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
+                  class="px-2 py-0.5 rounded-md text-[10.5px] font-medium transition-all cursor-pointer flex items-center gap-1"
+                  :class="currentViewMode === 'cards' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
                   title="卡片网格流"
                 >
-                  卡片
+                  <svg class="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                  </svg>
+                  <span>卡片</span>
                 </button>
                 <button
                   @click="currentViewMode = 'timeline'"
-                  class="px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer"
-                  :class="currentViewMode === 'timeline' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
+                  class="px-2 py-0.5 rounded-md text-[10.5px] font-medium transition-all cursor-pointer flex items-center gap-1"
+                  :class="currentViewMode === 'timeline' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'"
                   title="紧迫度时间轴"
                 >
-                  时间轴
+                  <svg class="w-3 h-3 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                  <span>时间轴</span>
                 </button>
               </div>
 
-              <span v-if="showFavoritesOnly" class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">待去清单</span>
+              <!-- 折叠按钮 -->
+              <button
+                @click="drawerOpen = !drawerOpen"
+                class="w-6 h-6 rounded-md bg-black/[0.03] hover:bg-black/[0.06] text-slate-400 hover:text-slate-800 flex items-center justify-center transition cursor-pointer"
+                :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
+              >
+                <svg :class="['w-3.5 h-3.5 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
             </div>
-
-            <!-- 右侧：收起抽屉按钮 -->
-            <button
-              @click="drawerOpen = !drawerOpen"
-              class="w-7 h-7 rounded-lg bg-white/80 hover:bg-white text-slate-500 hover:text-slate-900 flex items-center justify-center transition shadow-2xs cursor-pointer border border-black/[0.04]"
-              :title="drawerOpen ? '收起抽屉' : '展开抽屉'"
-            >
-              <svg :class="['w-3.5 h-3.5 transition-transform duration-200', drawerOpen ? 'rotate-0' : 'rotate-180']" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            </button>
           </div>
 
-          <!-- Row 2: 3维排序胶囊 [距离最近 | 即将截止 | 最新收录] + 视野联动微开关 -->
-          <div class="px-4 py-2 flex items-center justify-between border-b border-black/[0.04] bg-[#F5F5F7]/60">
-            <div class="inline-flex rounded-full bg-black/[0.04] p-0.5 border border-black/[0.04] text-[11px]">
+          <!-- Tier 2: 3维排序胶囊 [距离 | 截止 | 最新] + 视野联动开关 -->
+          <div class="px-4 py-1.5 flex items-center justify-between border-t border-black/[0.03] bg-black/[0.01]">
+            <div class="inline-flex rounded-full bg-black/[0.04] p-0.5 border border-black/[0.04] text-[10.5px]">
               <button
                 @click="sortMode = 'distance'"
                 class="px-2.5 py-0.5 rounded-full transition-all cursor-pointer"
                 :class="sortMode === 'distance' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
-                title="按距离市中心由近到远排序（优先市区核心活动）"
+                title="按距离市中心由近到远排序"
               >
                 距离最近
               </button>
@@ -448,7 +484,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 @click="sortMode = 'expiring'"
                 class="px-2.5 py-0.5 rounded-full transition-all cursor-pointer"
                 :class="sortMode === 'expiring' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
-                title="按剩余天数排序"
+                title="按剩余截止天数排序"
               >
                 即将截止
               </button>
@@ -456,17 +492,16 @@ HTML_CONTENT = """<!DOCTYPE html>
                 @click="sortMode = 'latest'"
                 class="px-2.5 py-0.5 rounded-full transition-all cursor-pointer"
                 :class="sortMode === 'latest' ? 'bg-white text-slate-900 font-semibold shadow-2xs' : 'text-slate-500 hover:text-slate-700'"
-                title="按发布时间排序"
+                title="按收录发布时间排序"
               >
-                最新
+                最新收录
               </button>
             </div>
 
-            <!-- 视野联动微开关 -->
             <button
               @click="toggleBoundsFilter"
-              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all cursor-pointer border"
-              :class="boundsFilterEnabled ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80 shadow-2xs' : 'bg-white/80 hover:bg-white text-slate-600 border-black/[0.05]'"
+              class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-medium transition-all cursor-pointer border"
+              :class="boundsFilterEnabled ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80 shadow-2xs' : 'bg-white/80 hover:bg-white text-slate-500 border-black/[0.04]'"
               title="开启后仅展示当前地图可视矩形范围内的线下活动"
             >
               <span class="w-1.5 h-1.5 rounded-full" :class="boundsFilterEnabled ? 'bg-[#34C759]' : 'bg-slate-300'"></span>
@@ -474,43 +509,20 @@ HTML_CONTENT = """<!DOCTYPE html>
             </button>
           </div>
 
-          <!-- Row 3: 南京核心片区瞬移胶囊栏 -->
-          <div class="px-4 py-1.5 border-b border-black/[0.03] bg-black/[0.015] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <span class="text-[10px] text-slate-400 font-medium shrink-0 flex items-center gap-1">
-              <svg class="w-2.5 h-2.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
-              </svg>
-              <span>瞬移</span>
-            </span>
-            <button
-              v-for="zone in zoneTeleports"
-              :key="zone.label"
-              @click="teleportToZone(zone)"
-              :class="[
-                'px-2 py-0.5 rounded-full text-[10.5px] font-medium whitespace-nowrap transition-all cursor-pointer shrink-0',
-                activeZoneLabel === zone.label
-                  ? 'bg-slate-950 text-white font-semibold shadow-xs'
-                  : 'bg-white/80 hover:bg-white text-slate-600 border border-black/[0.04]'
-              ]"
-            >
-              {{ zone.label }}
-            </button>
-          </div>
-
-          <!-- Row 4: 【未来14天横向滑动日历条】 -->
-          <div class="px-4 py-2 border-b border-black/[0.04] bg-[#F5F5F7]/80 backdrop-blur-sm flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <!-- Tier 3: 【未来14天横向滑动日历条】(紧凑高密设计，高度 36px) -->
+          <div class="px-3 py-1.5 flex items-center gap-1 overflow-x-auto no-scrollbar border-t border-black/[0.03] bg-black/[0.015]">
             <button
               @click="selectedCalendarDate = null"
               :class="[
-                'min-w-[44px] h-[52px] rounded-xl flex flex-col items-center justify-center px-1 cursor-pointer transition-all duration-200 shrink-0 text-center',
+                'min-w-[38px] h-[36px] rounded-lg flex flex-col items-center justify-center px-1 cursor-pointer transition-all shrink-0 text-center',
                 selectedCalendarDate === null
                   ? 'bg-slate-950 text-white shadow-xs font-semibold'
                   : 'bg-white/80 hover:bg-white text-slate-600 border border-black/[0.04]'
               ]"
               title="查看全部日期活动"
             >
-              <span class="text-[9.5px] opacity-75 leading-none">全周期</span>
-              <span class="text-xs font-bold leading-tight mt-1">全部</span>
+              <span class="text-[9px] opacity-75 leading-none">全周期</span>
+              <span class="text-[11px] font-bold leading-tight mt-0.5">全部</span>
             </button>
 
             <button
@@ -518,17 +530,17 @@ HTML_CONTENT = """<!DOCTYPE html>
               :key="day.iso"
               @click="selectCalendarDay(day.iso)"
               :class="[
-                'min-w-[44px] h-[52px] rounded-xl flex flex-col items-center justify-between py-1.5 px-1 cursor-pointer transition-all duration-200 shrink-0 text-center',
+                'min-w-[40px] h-[36px] rounded-lg flex flex-col items-center justify-between py-1 px-1 cursor-pointer transition-all shrink-0 text-center',
                 selectedCalendarDate === day.iso
-                  ? 'bg-[#007AFF] text-white shadow-md scale-102 font-semibold'
+                  ? 'bg-[#007AFF] text-white shadow-xs font-semibold scale-102'
                   : (day.count > 0 ? 'bg-white/90 hover:bg-white text-slate-800 border border-black/[0.04]' : 'bg-black/[0.02] text-slate-400 border border-transparent')
               ]"
               :title="day.iso + ' (' + day.count + ' 个活动开放)'"
             >
-              <span class="text-[9.5px] leading-none" :class="selectedCalendarDate === day.iso ? 'text-white/85' : 'text-slate-400'">
+              <span class="text-[9px] leading-none" :class="selectedCalendarDate === day.iso ? 'text-white/90' : 'text-slate-400'">
                 {{ day.label }}
               </span>
-              <span class="text-[13px] font-bold tabular-nums leading-none">
+              <span class="text-[12px] font-bold tabular-nums leading-none">
                 {{ day.dateNum }}
               </span>
               <div class="flex items-center gap-0.5 h-1">
@@ -551,7 +563,7 @@ HTML_CONTENT = """<!DOCTYPE html>
               v-for="item in filteredEvents"
               :key="item.id"
               :id="'card-' + item.id"
-              @click="openDetail(item)"
+              @click="openDetail(item)" @mouseenter="activeEventId = item.id; syncMarkers()"
               :class="[
                 'group bg-white rounded-2xl p-3.5 transition-all duration-300 cursor-pointer border flex flex-col',
                 activeEventId === item.id
@@ -694,7 +706,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                   v-for="item in group.items"
                   :key="item.id"
                   :id="'timeline-card-' + item.id"
-                  @click="openDetail(item)"
+                  @click="openDetail(item)" @mouseenter="activeEventId = item.id; syncMarkers()"
                   :class="[
                     'group relative bg-white rounded-2xl p-3 transition-all duration-300 cursor-pointer border flex flex-col',
                     activeEventId === item.id
@@ -1818,19 +1830,43 @@ HTML_CONTENT = """<!DOCTYPE html>
           if (!leafletMap || !leafletMarkersGroup) return;
           leafletMarkersGroup.clearLayers();
 
+          // 坐标防碰撞重叠算法 (Spider Radial Spread for nearby points)
+          const coordBuckets = {};
+          const JITTER_STEP = 0.0022; // 约 220 米轻微径向散开，消除重合
+
           filteredEvents.value.forEach(item => {
+            const rawLat = Number(item.lat);
+            const rawLng = Number(item.lng);
+            // 聚类近似桶 key (约 300m 精度)
+            const bucketKey = Math.round(rawLat * 200) + '_' + Math.round(rawLng * 200);
+            const countInBucket = coordBuckets[bucketKey] || 0;
+            coordBuckets[bucketKey] = countInBucket + 1;
+
+            let finalLat = rawLat;
+            let finalLng = rawLng;
+            if (countInBucket > 0) {
+              const angle = (countInBucket * (2 * Math.PI / 6)) + (countInBucket * 0.2);
+              const radius = JITTER_STEP * (0.8 + 0.3 * Math.floor(countInBucket / 6));
+              finalLat = rawLat + Math.sin(angle) * radius;
+              finalLng = rawLng + Math.cos(angle) * radius * 1.15;
+            }
+
             const dotColor = getMarkerDotColor(item.category);
             const shortName = getMarkerShortName(item.title);
             const priceLabel = getMarkerPriceLabel(item);
             const isActive = activeEventId.value === item.id;
 
+            // Airbnb 空间探索标点规范: 默认紧凑小胶囊，悬停/激活反色纯黑大胶囊
             const iconHtml = `
               <div class="apple-marker ${isActive ? 'active' : ''}" id="leaf-marker-${item.id}">
-                <div class="marker-pill inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.12),0_1px_3px_rgba(0,0,0,0.06)] border border-black/[0.06] font-medium text-xs whitespace-nowrap cursor-pointer ${isActive ? 'bg-[#007AFF] text-white ring-2 ring-white/90 scale-110 z-50' : 'bg-white/95 text-slate-800'}">
+                <div class="marker-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.06] font-medium text-[11px] whitespace-nowrap cursor-pointer transition-all duration-300 ${
+                  isActive
+                    ? 'bg-slate-950 text-white ring-2 ring-white/90 scale-110 shadow-[0_16px_36px_rgba(0,0,0,0.35)]'
+                    : 'bg-white/95 text-slate-800 hover:bg-white hover:shadow-md'
+                }">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${isActive ? '#ffffff' : dotColor}"></span>
-                  <span class="marker-name font-semibold truncate max-w-[130px] ${isActive ? 'text-white' : 'text-slate-900'}">${shortName}</span>
-                  <span class="marker-divider ${isActive ? 'text-white/40' : 'text-slate-300'}">|</span>
-                  <span class="marker-price text-[11px] font-semibold ${isActive ? 'text-white' : '#34C759'}">${priceLabel}</span>
+                  <span class="marker-name font-semibold truncate ${isActive ? 'max-w-[150px] text-white' : 'max-w-[76px] text-slate-900'}">${shortName}</span>
+                  ${isActive ? `<span class="text-white/40">·</span><span class="text-[10px] font-medium text-white/90">${priceLabel}</span>` : ''}
                 </div>
               </div>
             `;
@@ -1842,7 +1878,10 @@ HTML_CONTENT = """<!DOCTYPE html>
               iconAnchor: [0, 0]
             });
 
-            const marker = L.marker([item.lat, item.lng], { icon: customIcon });
+            const marker = L.marker([finalLat, finalLng], {
+              icon: customIcon,
+              zIndexOffset: isActive ? 1000 : 0
+            });
 
             marker.on('click', () => {
               openDetail(item);
