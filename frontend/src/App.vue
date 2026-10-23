@@ -298,6 +298,20 @@
         <span>概览统计</span>
       </button>
 
+      <!-- 手机与局域网短域名访问 (免输 IP) -->
+      <button
+        @click="showLANModal = true"
+        :class="[
+          'px-3 py-2 bg-white/80 backdrop-blur-2xl backdrop-saturate-150 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)] border border-white/80 text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer',
+          showLANModal ? 'bg-slate-950 text-white border-slate-950 shadow-md' : 'text-slate-700 hover:bg-white'
+        ]"
+        title="手机与局域网短域名访问"
+        aria-label="手机与局域网短域名访问"
+      >
+        <Smartphone class="w-3.5 h-3.5" :class="showLANModal ? 'text-white' : 'text-[#007AFF]'" />
+        <span>手机访问</span>
+      </button>
+
       <!-- 一键复位新街口中心 -->
       <button
         @click="recenterMap"
@@ -360,6 +374,15 @@
         aria-label="统计洞察"
       >
         <BarChart3 class="w-4 h-4 text-[#007AFF]" />
+      </button>
+
+      <button
+        @click="showLANModal = true"
+        class="w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md border border-white/80 flex items-center justify-center text-slate-700 active:scale-95 transition"
+        title="手机局域网直达"
+        aria-label="手机局域网直达"
+      >
+        <Smartphone class="w-4 h-4 text-[#007AFF]" />
       </button>
     </div>
 
@@ -917,6 +940,9 @@
       </div>
     </transition>
 
+    <!-- 8. 手机与局域网免 IP 访问弹窗 -->
+    <LANAccessModal :is-open="showLANModal" @close="showLANModal = false" />
+
   </div>
 </template>
 
@@ -927,10 +953,11 @@ import 'leaflet.heat';
 import {
   Search, X, Building2, Globe, Star, Sparkles, Filter, RefreshCw,
   Calendar, Clock, MapPin, Navigation, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
-  Layers, Flame, BarChart3, Crosshair, ExternalLink, Copy, Check, FileText, Disc, Compass
+  Layers, Flame, BarChart3, Crosshair, ExternalLink, Copy, Check, FileText, Disc, Compass, Smartphone
 } from 'lucide-vue-next';
 import { resolveEventCover } from './utils/covers.js';
 import EmptyState from './components/EmptyState.vue';
+import LANAccessModal from './components/LANAccessModal.vue';
 
 // 城市中心常量 (南京新街口原点)
 const XINJIEKOU = [118.7969, 32.0436]; // [lng, lat]
@@ -998,6 +1025,7 @@ const venueFilter = ref('ALL');
 const showFavoritesOnly = ref(false);
 const showFilterPopover = ref(false);
 const showStatsModal = ref(false);
+const showLANModal = ref(false);
 const isSyncing = ref(false);
 const copiedAddress = ref(false);
 const timeFilter = ref('ALL');
@@ -1807,7 +1835,9 @@ async function initCharts() {
 // 全局键盘监听 (Escape 键关闭弹窗)
 function handleGlobalKeydown(e) {
   if (e.key === 'Escape') {
-    if (showStatsModal.value) {
+    if (showLANModal.value) {
+      showLANModal.value = false;
+    } else if (showStatsModal.value) {
       closeStatsModal();
     } else if (detailItem.value) {
       closeDetail();

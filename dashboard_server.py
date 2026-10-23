@@ -1638,8 +1638,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         try:
             self._handle_get()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
         except Exception as e:
-            self._send_json({"ok": False, "error": f"Internal Server Error: {str(e)}"}, 500)
+            try:
+                self._send_json({"ok": False, "error": f"Internal Server Error: {str(e)}"}, 500)
+            except Exception:
+                pass
 
     def _handle_get(self) -> None:
         METRICS.record_request()
@@ -1874,6 +1879,46 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         # ----------------------------------------------------------------------
+        # 1.5 局域网访问与 mDNS 拓扑信息 (GET /api/lan/info)
+        # ----------------------------------------------------------------------
+        if parsed.path == "/api/lan/info":
+            hostname = socket.gethostname()
+            primary_ip = get_primary_lan_ip()
+            all_ips = get_local_ips()
+            cur_port = self.server.server_address[1] if hasattr(self.server, "server_address") else 8765
+            direct_urls = []
+            if IS_PORT_80_ACTIVE:
+                direct_urls.extend([
+                    "http://nj.local",
+                    f"http://{hostname.lower()}.local",
+                    f"http://{hostname.lower()}",
+                    f"http://{primary_ip}"
+                ])
+            port_urls = [
+                f"http://nj.local:{cur_port}",
+                f"http://{hostname.lower()}.local:{cur_port}",
+                f"http://{hostname.lower()}:{cur_port}",
+                f"http://{primary_ip}:{cur_port}"
+            ]
+            recommended_urls = direct_urls if IS_PORT_80_ACTIVE else port_urls
+            self._send_json({
+                "ok": True,
+                "hostname": hostname,
+                "primary_ip": primary_ip,
+                "all_ips": all_ips,
+                "port": cur_port,
+                "http_port": 80,
+                "http_port_active": IS_PORT_80_ACTIVE,
+                "short_domains": ["nj.local", f"{hostname.lower()}.local", "lbs.local", hostname.lower()],
+                "direct_urls": direct_urls,
+                "port_urls": port_urls,
+                "recommended_urls": recommended_urls,
+                "recommended_url": direct_urls[0] if direct_urls else port_urls[0],
+                "recommended_ip_url": f"http://{primary_ip}" if IS_PORT_80_ACTIVE else f"http://{primary_ip}:{cur_port}"
+            })
+            return
+
+        # ----------------------------------------------------------------------
         # 2. 系统健康探针与运行时监控 (GET /api/health)
         # ----------------------------------------------------------------------
         if parsed.path == "/api/health":
@@ -2090,8 +2135,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             self._handle_post()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
         except Exception as e:
-            self._send_json({"ok": False, "error": f"Internal Server Error: {str(e)}"}, 500)
+            try:
+                self._send_json({"ok": False, "error": f"Internal Server Error: {str(e)}"}, 500)
+            except Exception:
+                pass
 
     def _handle_post(self) -> None:
         METRICS.record_request()
@@ -2250,7 +2300,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 # 11. 带有限长线程池与 Socket 超时保护的高性能服务器 (Bounded Server)
 # ==============================================================================
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
-    """带有限长线程池 (max_workers=32) 与 Socket 超时保护 (15s) 的生产级服务器"""
+    """带有限长线程池 (max_workers=32)、TCP Backlog (128) 与 Socket 超时保护 (15s) 的生产级服务器"""
+    request_queue_size = 128
+    allow_reuse_address = True
 
     def __init__(
         self,
@@ -2291,11 +2343,19 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
     def _process_request_bounded(self, request, client_address):
         try:
             self.finish_request(request, client_address)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
         except Exception:
             self.handle_error(request, client_address)
         finally:
-            self.close_request(request)
+            try:
+                self.close_request(request)
+            except Exception:
+                pass
             self._semaphore.release()
+
+
+IS_PORT_80_ACTIVE = False
 
 
 def get_local_ips() -> List[str]:
@@ -2310,7 +2370,75 @@ def get_local_ips() -> List[str]:
     return ips
 
 
+def get_primary_lan_ip() -> str:
+    """探测主出网网卡 IP (优先定位真实 WiFi / 以太网物理地址，排除虚拟网卡)"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("114.114.114.114", 80))
+        return s.getsockname()[0]
+    except Exception:
+        local_ips = get_local_ips()
+        return local_ips[0] if local_ips else "127.0.0.1"
+    finally:
+        s.close()
+
+
+class LANNameBroadcaster:
+    """局域网零配置 mDNS 广播器 (ZeroConf / Bonjour, RFC 6762)
+    使同一 WiFi 下的手机 (iPhone Safari / Android Chrome)、平板与电脑无需记忆与输入 IP，
+    在浏览器地址栏直接输入短域名 (如 http://nj.local 或 http://panda.local) 即可直接访问。
+    """
+    def __init__(self, ip: str, ports: List[int], hostnames: List[str]):
+        self.ip = ip
+        self.ports = ports
+        self.hostnames = hostnames
+        self.zc = None
+        self.services = []
+
+    def start(self) -> bool:
+        if self.ip in ("127.0.0.1", "0.0.0.0"):
+            return False
+        try:
+            from zeroconf import Zeroconf, ServiceInfo
+            self.zc = Zeroconf()
+            ip_bytes = socket.inet_aton(self.ip)
+            for port in self.ports:
+                for h in self.hostnames:
+                    clean_h = h.strip().rstrip('.').lower()
+                    if not clean_h:
+                        continue
+                    server_name = f"{clean_h}.local."
+                    info = ServiceInfo(
+                        "_http._tcp.local.",
+                        f"{clean_h}-{port}._http._tcp.local.",
+                        addresses=[ip_bytes],
+                        port=port,
+                        server=server_name,
+                        properties={"app": "nanjing-lbs", "version": SERVER_VERSION}
+                    )
+                    self.zc.register_service(info)
+                    self.services.append(info)
+            return True
+        except Exception as e:
+            print(f"[!] Warning: mDNS 局域网短域名广播初始化异常: {e}", flush=True)
+            return False
+
+    def stop(self) -> None:
+        if self.zc:
+            for s in self.services:
+                try:
+                    self.zc.unregister_service(s)
+                except Exception:
+                    pass
+            try:
+                self.zc.close()
+            except Exception:
+                pass
+            self.zc = None
+
+
 def main() -> None:
+    global IS_PORT_80_ACTIVE
     import argparse
 
     parser = argparse.ArgumentParser(description="Nanjing LBS Platform Backend")
@@ -2336,44 +2464,71 @@ def main() -> None:
     except Exception as e:
         print(f"[!] Warning: 数据库初始自检异常: {e}", flush=True)
 
+    # 1. 主服务实例 (默认 8765 端口)
     server = BoundedThreadingHTTPServer(
         (host, port), DashboardHandler, max_workers=32, socket_timeout=15.0
     )
-    lan_ips = get_local_ips()
+
+    # 2. 尝试并发绑定 80 端口 (实现免输端口号直接访问)
+    server_80 = None
+    if port != 80:
+        try:
+            server_80 = BoundedThreadingHTTPServer(
+                (host, 80), DashboardHandler, max_workers=16, socket_timeout=15.0
+            )
+            threading.Thread(target=server_80.serve_forever, daemon=True).start()
+            IS_PORT_80_ACTIVE = True
+        except Exception:
+            IS_PORT_80_ACTIVE = False
+
+    # 3. 局域网物理网络与 mDNS 拓扑构建
+    primary_ip = get_primary_lan_ip()
+    hostname = socket.gethostname().lower()
+    listen_ports = [port]
+    if IS_PORT_80_ACTIVE:
+        listen_ports.append(80)
+
+    # 广播短域名：nj.local, lbs.local, nanjing.local, <hostname>.local
+    lan_broadcaster = LANNameBroadcaster(
+        ip=primary_ip,
+        ports=listen_ports,
+        hostnames=["nj", "lbs", "nanjing", hostname]
+    )
+    broadcaster_ok = lan_broadcaster.start()
+
     # 启动每日 12:00 抓取调度器后台线程
     DAILY_SCHEDULER.start()
 
-    print("=" * 64, flush=True)
+    print("=" * 66, flush=True)
     print(f"  Nanjing LBS Platform Backend ({SERVER_VERSION})", flush=True)
-    print(f"  - Bind Address:  {host}:{port}", flush=True)
-    print(f"  - Local URL:     http://127.0.0.1:{port}", flush=True)
-    for ip in lan_ips:
-        print(f"  - LAN URL:       http://{ip}:{port}", flush=True)
-    print(
-        f"  - Daily Schedule: Every day at 12:00:00 (Next: {DAILY_SCHEDULER.next_run_dt.strftime('%Y-%m-%d %H:%M:%S')})",
-        flush=True,
-    )
-    print(
-        "  - Lifecycle:     start_date / end_date / days_left / time_status Auto-Filter",
-        flush=True,
-    )
-    print("  - Deduplication: Smart Venue & Time Clustering -> extra_sources", flush=True)
-    print(f"  - Apple iCal:    http://127.0.0.1:{port}/api/events/calendar.ics", flush=True)
-    print("  - Quick Clip:    POST /api/events/clip (Structured Auto-Extraction)", flush=True)
-    if API_TOKEN:
-        print("  - Auth Status:   Enabled (Bearer Token / X-API-Key Protection)", flush=True)
+    print(f"  - Local URL:        http://127.0.0.1:{port} (或 http://localhost)", flush=True)
+    if IS_PORT_80_ACTIVE:
+        print(f"  - LAN Short URL:    http://nj.local       (免输 IP、免输端口号！)", flush=True)
+        print(f"  - LAN Device URL:   http://{hostname}.local   (全平台 mDNS 通用)", flush=True)
+        print(f"  - LAN NetBIOS:      http://{hostname}          (Windows/Android 原生)", flush=True)
+        print(f"  - LAN WiFi IP:      http://{primary_ip} (或 http://{primary_ip}:{port})", flush=True)
     else:
-        print(
-            "  - Auth Notice:   DASHBOARD_API_TOKEN is not set (Running in Open Dev Mode)",
-            flush=True,
-        )
-    print(f"  - Workers Pool:  Bounded 32 Worker Threads (Socket Timeout: 15s)", flush=True)
-    print(f"  - Max Body Size: {MAX_BODY_SIZE // (1024 * 1024)} MB (Anti-DoS Protected)", flush=True)
-    print("=" * 64, flush=True)
+        print(f"  - LAN Short URL:    http://nj.local:{port}  (免输 IP，直接访问)", flush=True)
+        print(f"  - LAN Device URL:   http://{hostname}.local:{port}", flush=True)
+        print(f"  - LAN NetBIOS:      http://{hostname}:{port}", flush=True)
+        print(f"  - LAN WiFi IP:      http://{primary_ip}:{port}", flush=True)
+    if broadcaster_ok:
+        print(f"  - mDNS Broadcaster: Active (已广播 nj.local / {hostname}.local 等短域名)", flush=True)
+    print(f"  - HTTP Port 80:     {'Active (免端口直连开启)' if IS_PORT_80_ACTIVE else 'Inactive'}", flush=True)
+    print(f"  - Workers Pool:     Bounded 32 Worker Threads (Socket Timeout: 15s)", flush=True)
+    print("=" * 66, flush=True)
 
     def handle_sig(sig, frame):
         print("\n[*] 正在安全停止 Nanjing LBS Backend 服务...", flush=True)
         DAILY_SCHEDULER.stop()
+        if lan_broadcaster:
+            lan_broadcaster.stop()
+        if server_80:
+            try:
+                server_80.shutdown()
+                server_80.server_close()
+            except Exception:
+                pass
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     try:
@@ -2388,8 +2543,16 @@ def main() -> None:
         pass
     finally:
         DAILY_SCHEDULER.stop()
+        if lan_broadcaster:
+            lan_broadcaster.stop()
+        if server_80:
+            try:
+                server_80.shutdown()
+                server_80.server_close()
+            except Exception:
+                pass
         server.server_close()
-        print("[✓] 服务已安全停止，套接字与后台调度器已平稳释放。", flush=True)
+        print("[✓] 服务已安全停止，套接字、mDNS 广播器与调度器已平稳释放。", flush=True)
 
 
 if __name__ == "__main__":

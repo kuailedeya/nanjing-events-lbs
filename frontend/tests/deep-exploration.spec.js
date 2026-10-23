@@ -230,4 +230,37 @@ test.describe('Deep Frontend Exploration & Edge-Cases Test Suite', () => {
     });
     expect(hasExpandedClass).toBe(false);
   });
+
+  test('LAN Access Modal displays short domain, QR code, and closes on Escape', async ({ page }) => {
+    await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('domcontentloaded');
+    await page.locator('#leaflet-map').waitFor();
+
+    // Click "手机访问" button (desktop dock or mobile floating controls)
+    const isMobile = await page.evaluate(() => window.innerWidth < 640);
+    const lanBtn = isMobile
+      ? page.locator('button[title="手机局域网直达"]')
+      : page.locator('button:has-text("手机访问")').first();
+    await expect(lanBtn).toBeVisible();
+    await lanBtn.click();
+    await page.waitForTimeout(500);
+
+    // Verify modal is visible
+    const modal = page.locator('div[role="dialog"][aria-label="局域网与移动设备访问指南"]');
+    await expect(modal).toBeVisible();
+
+    // Verify short domain displays
+    await expect(modal).toContainText('nj.local');
+
+    // Verify QR code image is rendered
+    const qrImg = modal.locator('img[alt*="二维码"]');
+    await expect(qrImg).toBeVisible();
+    const src = await qrImg.getAttribute('src');
+    expect(src).toContain('data:image/png;base64');
+
+    // Verify Escape key closes modal
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await expect(modal).not.toBeVisible();
+  });
 });

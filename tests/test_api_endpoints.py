@@ -227,3 +227,16 @@ def test_calendar_date_and_newest_sort_filtering(api_client):
         for i in range(len(items) - 1):
             assert items[i].get("updated_at", "") >= items[i + 1].get("updated_at", "")
 
+
+def test_lan_info_endpoint(api_client):
+    """验证局域网短域名拓扑信息接口 (GET /api/lan/info)"""
+    status, res = api_client.get_json("/api/lan/info")
+    assert status == 200
+    assert res["ok"] is True
+    assert "hostname" in res
+    assert "primary_ip" in res
+    assert "short_domains" in res
+    assert "nj.local" in res["short_domains"]
+    assert len(res.get("recommended_urls", [])) > 0
+
+
